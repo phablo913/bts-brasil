@@ -2,9 +2,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BTS no Brasil 💜</title>  <script type="module">
+  <title>Novas Datas — BTS WORLD TOUR 'ARIRANG' 💜</title>
+  <meta name="description" content="Abaixo-assinado de fãs por novas datas da BTS WORLD TOUR 'ARIRANG' no Brasil.">  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, serverTimestamp, query, onSnapshot, orderBy, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import {
+      getFirestore,
+      collection,
+      addDoc,
+      serverTimestamp,
+      query,
+      onSnapshot,
+      orderBy,
+      deleteDoc,
+      doc,
+      where,
+      getDocs,
+      limit
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAorOEChpWGRIXU2cP7f9TmqHbep7H660Y",
@@ -14,161 +29,344 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
+    const auth = getAuth(app);
     const META = 1000000;
+    let adminUnsubscribe = null;
 
-    window.assinar = async function () {
-      const nome = document.getElementById("nome").value.trim();
-      const cidade = document.getElementById("cidade").value.trim();
+    const ESTADOS = [
+      "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS",
+      "MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"
+    ];
 
-      if (!nome || !cidade) {
-        alert("Preencha todos os campos!");
-        return;
-      }
-
-      if (localStorage.getItem("assinou")) {
-        alert("Você já assinou 💜");
-        return;
-      }
-
-      await addDoc(collection(db, "assinaturas"), {
-        nome,
-        cidade,
-        data: serverTimestamp()
+    function popularEstados() {
+      const select = document.getElementById("estado");
+      select.innerHTML = '<option value="">Selecione o estado</option>';
+      ESTADOS.forEach(uf => {
+        const option = document.createElement("option");
+        option.value = uf;
+        option.textContent = uf;
+        select.appendChild(option);
       });
+    }
 
-      localStorage.setItem("assinou", "true");
-      document.getElementById("nome").value = "";
-      document.getElementById("cidade").value = "";
-      alert("Assinado com sucesso 💜");
-    };
+    function validarNomeCompleto(nome) {
+      return /^\s*[^\s]+(?:\s+[^\s]+)+\s*$/.test(nome);
+    }
 
-    window.abrirAdmin = function () {
-      const senha = prompt("Digite a senha do admin");
-      if (senha === "btsadmin2026") {
-        document.getElementById("adminPanel").style.display = "block";
-        document.getElementById("adminBtn").style.display = "none";
-        document.getElementById("siteCard").scrollIntoView({ behavior: "smooth" });
-      } else if (senha !== null) {
-        alert("Senha incorreta");
+    async function gerarFingerprint() {
+      const raw = [
+        navigator.userAgent,
+        navigator.language,
+        navigator.platform,
+        screen.width,
+        screen.height,
+        screen.colorDepth,
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+        navigator.hardwareConcurrency || ""
+      ].join("|");
+
+      const bytes = new TextEncoder().encode(raw);
+      const hash = await crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    function abrirModal(id) {
+      document.getElementById(id).style.display = "flex";
+    }
+
+    function fecharModal(id) {
+      document.getElementById(id).style.display = "none";
+    }
+
+    function criarEfeitoAssinatura() {
+      const container = document.getElementById("celebration");
+      container.innerHTML = "";
+      const symbols = ["💜", "✨", "💫", "💜", "✨"];
+
+      for (let i = 0; i < 22; i++) {
+        const el = document.createElement("div");
+        el.className = "burst-item";
+        el.textContent = symbols[i % symbols.length];
+        el.style.left = Math.random() * 100 + "%";
+        el.style.animationDelay = (Math.random() * 0.35) + "s";
+        el.style.fontSize = (18 + Math.random() * 16) + "px";
+        container.appendChild(el);
       }
-    };
 
-    window.fecharAdmin = function () {
-      document.getElementById("adminPanel").style.display = "none";
-      document.getElementById("adminBtn").style.display = "block";
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    };
+      container.classList.add("show-burst");
+      setTimeout(() => {
+        container.classList.remove("show-burst");
+        container.innerHTML = "";
+      }, 2600);
+    }
 
-    window.excluirAssinatura = async function (id, nome) {
-      const confirmar = confirm(`Deseja remover a assinatura de ${nome}?`);
-      if (!confirmar) return;
-      await deleteDoc(doc(db, "assinaturas", id));
-      alert("Assinatura removida com sucesso.");
-    };
+    async function assinaturaExistentePorDispositivo(fingerprintHash) {
+      const q = query(
+        collection(db, "assinaturas"),
+        where("fingerprintHash", "==", fingerprintHash),
+        limit(1)
+      );
+      const snapshot = await getDocs(q);
+      return !snapshot.empty;
+    }
 
-    window.compartilhar = function () {
+    async function assinar() {
+      const nome = document.getElementById("nome").value.trim().replace(/\s+/g, " ");
+      const estado = document.getElementById("estado").value;
+      const cidade = document.getElementById("cidade").value.trim().replace(/\s+/g, " ");
+      const consentimento = document.getElementById("consentimento").checked;
+      const submitBtn = document.getElementById("submitBtn");
+
+      if (!validarNomeCompleto(nome)) {
+        alert("Informe nome e sobrenome para assinar o abaixo-assinado.");
+        return;
+      }
+
+      if (!estado || !cidade) {
+        alert("Preencha estado e cidade.");
+        return;
+      }
+
+      if (!consentimento) {
+        alert("Confirme o consentimento para concluir a assinatura.");
+        return;
+      }
+
+      if (localStorage.getItem("assinaturaRegistrada") === "true") {
+        alert("Este dispositivo já possui uma assinatura registrada.");
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Enviando...";
+
+      try {
+        const fingerprintHash = await gerarFingerprint();
+        const jaExiste = await assinaturaExistentePorDispositivo(fingerprintHash);
+
+        if (jaExiste) {
+          localStorage.setItem("assinaturaRegistrada", "true");
+          alert("Este dispositivo já possui uma assinatura registrada.");
+          return;
+        }
+
+        await addDoc(collection(db, "assinaturas"), {
+          nome,
+          estado,
+          cidade,
+          fingerprintHash,
+          createdAt: serverTimestamp(),
+          consentimento: true,
+          origem: "site"
+        });
+
+        localStorage.setItem("assinaturaRegistrada", "true");
+        document.getElementById("nome").value = "";
+        document.getElementById("estado").value = "";
+        document.getElementById("cidade").value = "";
+        document.getElementById("consentimento").checked = false;
+        criarEfeitoAssinatura();
+        alert("Assinatura registrada com sucesso 💜");
+      } catch (error) {
+        console.error(error);
+        alert("Não foi possível registrar a assinatura agora. Tente novamente.");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Assinar agora";
+      }
+    }
+
+    function compartilhar() {
       const url = window.location.href;
       if (navigator.share) {
         navigator.share({
-          title: "BTS no Brasil 💜",
-          text: "Assine a campanha para trazer o BTS ao Brasil!",
+          title: "Novas Datas — BTS WORLD TOUR 'ARIRANG' 💜",
+          text: "Assine a campanha por novas datas da turnê ARIRANG no Brasil.",
           url
         });
       } else {
         navigator.clipboard.writeText(url);
         alert("Link copiado!");
       }
-    };
+    }
 
-    window.abrirModal = function (id) {
-      document.getElementById(id).style.display = "flex";
-    };
+    async function loginAdmin() {
+      const email = document.getElementById("adminEmail").value.trim();
+      const senha = document.getElementById("adminSenha").value;
+      const loginBtn = document.getElementById("adminLoginBtn");
 
-    window.fecharModal = function (id) {
-      document.getElementById(id).style.display = "none";
-    };
+      if (!email || !senha) {
+        alert("Preencha e-mail e senha do admin.");
+        return;
+      }
 
-    window.onload = () => {
-      const contadorEl = document.getElementById("contador");
-      const progressoEl = document.getElementById("progresso");
+      loginBtn.disabled = true;
+      loginBtn.textContent = "Entrando...";
+
+      try {
+        await signInWithEmailAndPassword(auth, email, senha);
+        fecharModal("adminLoginModal");
+        document.getElementById("adminEmail").value = "";
+        document.getElementById("adminSenha").value = "";
+      } catch (error) {
+        console.error(error);
+        alert("Não foi possível entrar no admin.");
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "Entrar no admin";
+      }
+    }
+
+    async function sairAdmin() {
+      try {
+        await signOut(auth);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    async function excluirAssinatura(id, nome) {
+      const confirmar = confirm(`Deseja remover a assinatura de ${nome}?`);
+      if (!confirmar) return;
+
+      try {
+        await deleteDoc(doc(db, "assinaturas", id));
+        alert("Assinatura removida.");
+      } catch (error) {
+        console.error(error);
+        alert("Não foi possível excluir agora.");
+      }
+    }
+
+    function ligarAdmin() {
+      document.getElementById("adminTrigger").style.display = "none";
+      document.getElementById("adminPanel").style.display = "block";
+      if (adminUnsubscribe) adminUnsubscribe();
+
       const adminListaEl = document.getElementById("adminLista");
+      const q = query(collection(db, "assinaturas"), orderBy("createdAt", "desc"));
 
-      const q = query(collection(db, "assinaturas"), orderBy("data", "desc"));
-
-      onSnapshot(q, (snapshot) => {
-        const total = snapshot.size;
-        contadorEl.innerText = total.toLocaleString("pt-BR");
-
-        const porcentagem = Math.min((total / META) * 100, 100);
-        progressoEl.style.width = porcentagem + "%";
-
+      adminUnsubscribe = onSnapshot(q, snapshot => {
         adminListaEl.innerHTML = "";
         snapshot.docs.forEach((registro, index) => {
           const d = registro.data();
           const item = document.createElement("div");
           item.className = "admin-item";
-
           const nomeSeguro = (d.nome || "Sem nome").replace(/'/g, "\\'");
-
           item.innerHTML = `
             <span>#${index + 1}</span>
             <div class="admin-info">
               <strong>${d.nome || "Sem nome"}</strong>
-              <small>${d.cidade || "Sem cidade"}</small>
+              <small>${d.estado || ""} • ${d.cidade || "Sem cidade"}</small>
             </div>
             <button class="delete-btn" onclick="excluirAssinatura('${registro.id}', '${nomeSeguro}')">Excluir</button>
           `;
           adminListaEl.appendChild(item);
         });
       });
-    };
+    }
+
+    function desligarAdmin() {
+      document.getElementById("adminPanel").style.display = "none";
+      document.getElementById("adminTrigger").style.display = "block";
+      if (adminUnsubscribe) {
+        adminUnsubscribe();
+        adminUnsubscribe = null;
+      }
+    }
+
+    function iniciarContador() {
+      const contadorEl = document.getElementById("contador");
+      const progressoEl = document.getElementById("progresso");
+      const q = query(collection(db, "assinaturas"), orderBy("createdAt", "desc"));
+
+      onSnapshot(q, snapshot => {
+        const total = snapshot.size;
+        contadorEl.textContent = total.toLocaleString("pt-BR");
+        const porcentagem = Math.min((total / META) * 100, 100);
+        progressoEl.style.width = porcentagem + "%";
+      });
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      popularEstados();
+      iniciarContador();
+
+      document.getElementById("submitBtn").addEventListener("click", assinar);
+      document.getElementById("shareBtn").addEventListener("click", compartilhar);
+      document.getElementById("openAdminBtn").addEventListener("click", () => abrirModal("adminLoginModal"));
+      document.getElementById("adminLoginBtn").addEventListener("click", loginAdmin);
+      document.getElementById("adminLogoutBtn").addEventListener("click", sairAdmin);
+
+      document.querySelectorAll("[data-open-modal]").forEach(btn => {
+        btn.addEventListener("click", () => abrirModal(btn.dataset.openModal));
+      });
+    });
+
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        ligarAdmin();
+      } else {
+        desligarAdmin();
+      }
+    });
+
+    window.abrirModal = abrirModal;
+    window.fecharModal = fecharModal;
+    window.excluirAssinatura = excluirAssinatura;
   </script>  <style>
     * { box-sizing: border-box; }
+
+    :root {
+      --bg1: #230031;
+      --bg2: #4b0082;
+      --bg3: #8a2be2;
+      --glass: rgba(255,255,255,0.09);
+      --glass-border: rgba(255,255,255,0.16);
+      --text-soft: rgba(255,255,255,0.84);
+      --shadow: 0 24px 70px rgba(0,0,0,0.28);
+    }
 
     body {
       margin: 0;
       min-height: 100vh;
       font-family: Arial, sans-serif;
       color: white;
+      background: linear-gradient(135deg, var(--bg1), var(--bg2) 48%, var(--bg3));
       overflow-x: hidden;
-      background: linear-gradient(135deg, #240035 0%, #4b0082 45%, #8A2BE2 100%);
       position: relative;
     }
 
     .background {
       position: fixed;
       inset: 0;
-      overflow: hidden;
       z-index: 0;
+      overflow: hidden;
       pointer-events: none;
     }
 
     .blob {
       position: absolute;
       border-radius: 50%;
-      filter: blur(20px);
-      opacity: 0.35;
+      background: radial-gradient(circle, rgba(255,255,255,0.52), rgba(255,255,255,0.06));
+      filter: blur(22px);
+      opacity: 0.34;
       animation: float 18s infinite ease-in-out;
-      background: radial-gradient(circle, rgba(255,255,255,0.55), rgba(255,255,255,0.08));
       will-change: transform;
     }
 
-    .blob1 { width: 280px; height: 280px; top: 5%; left: -5%; animation-delay: 0s; animation-duration: 16s; }
-    .blob2 { width: 220px; height: 220px; top: 55%; right: -5%; animation-delay: 3s; animation-duration: 20s; }
-    .blob3 { width: 180px; height: 180px; bottom: 8%; left: 10%; animation-delay: 6s; animation-duration: 22s; }
-    .blob4 { width: 240px; height: 240px; top: 20%; right: 20%; animation-delay: 9s; animation-duration: 19s; }
+    .blob1 { width: 300px; height: 300px; top: 4%; left: -6%; animation-duration: 16s; }
+    .blob2 { width: 240px; height: 240px; top: 52%; right: -6%; animation-duration: 19s; }
+    .blob3 { width: 180px; height: 180px; bottom: 8%; left: 12%; animation-duration: 22s; }
+    .blob4 { width: 220px; height: 220px; top: 18%; right: 18%; animation-duration: 20s; }
 
     @keyframes float {
       0% { transform: translate3d(0, 0, 0) scale(1); }
-      20% { transform: translate3d(35px, -28px, 0) scale(1.08); }
-      40% { transform: translate3d(-24px, 30px, 0) scale(0.94); }
-      60% { transform: translate3d(28px, 18px, 0) scale(1.04); }
-      80% { transform: translate3d(-30px, -22px, 0) scale(0.98); }
+      20% { transform: translate3d(34px, -26px, 0) scale(1.08); }
+      40% { transform: translate3d(-22px, 28px, 0) scale(0.94); }
+      60% { transform: translate3d(28px, 16px, 0) scale(1.03); }
+      80% { transform: translate3d(-30px, -20px, 0) scale(0.98); }
       100% { transform: translate3d(0, 0, 0) scale(1); }
-    }
-      25% { transform: translateY(-20px) translateX(20px) scale(1.08); }
-      50% { transform: translateY(25px) translateX(-10px) scale(0.96); }
-      75% { transform: translateY(-10px) translateX(-25px) scale(1.04); }
     }
 
     .page {
@@ -178,98 +376,98 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 24px 14px;
+      padding: 28px 16px;
     }
 
     .layout {
       width: 100%;
-      max-width: 1050px;
+      max-width: 1220px;
       display: grid;
-      grid-template-columns: 1.05fr 0.95fr;
+      grid-template-columns: 1.15fr 0.85fr;
       gap: 22px;
       align-items: start;
     }
 
     .card, .admin-panel {
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.15);
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
       backdrop-filter: blur(18px);
       -webkit-backdrop-filter: blur(18px);
-      box-shadow: 0 20px 60px rgba(0,0,0,0.28);
       border-radius: 28px;
+      box-shadow: var(--shadow);
     }
 
     .card { padding: 30px 24px; }
 
-    .badge {
+    .eyebrow {
       display: inline-block;
       padding: 8px 14px;
       border-radius: 999px;
       background: rgba(255,255,255,0.14);
       font-size: 12px;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.4px;
       margin-bottom: 14px;
     }
 
     h1 {
       margin: 0 0 10px;
-      font-size: 38px;
-      line-height: 1.05;
+      font-size: clamp(32px, 4vw, 46px);
+      line-height: 1.02;
     }
 
     .sub {
       margin: 0 0 22px;
-      color: rgba(255,255,255,0.85);
+      color: var(--text-soft);
       font-size: 15px;
-      line-height: 1.5;
+      line-height: 1.55;
+      max-width: 760px;
     }
 
     .stats {
-      display: flex;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(150px, 1fr));
       gap: 12px;
       margin-bottom: 18px;
-      flex-wrap: wrap;
     }
 
     .stat-box {
-      flex: 1;
-      min-width: 120px;
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.12);
       border-radius: 18px;
-      padding: 14px;
-      text-align: left;
+      padding: 15px;
     }
 
     .stat-box span {
       display: block;
       font-size: 12px;
-      opacity: 0.8;
+      opacity: 0.82;
       margin-bottom: 6px;
     }
 
-    .stat-box strong { font-size: 22px; }
+    .stat-box strong {
+      font-size: 24px;
+      display: block;
+    }
 
     .barra {
-      width: 100%;
       height: 12px;
-      background: rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.16);
       border-radius: 999px;
       overflow: hidden;
-      margin: 12px 0 10px;
+      margin: 10px 0 10px;
     }
 
     .progresso {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, rgba(255,255,255,0.95), rgba(255,219,255,0.95));
-      box-shadow: 0 0 18px rgba(255,255,255,0.7);
-      transition: width 0.6s ease;
+      transition: width .6s ease;
+      background: linear-gradient(90deg, rgba(255,255,255,0.95), rgba(255,223,255,0.95));
+      box-shadow: 0 0 18px rgba(255,255,255,0.62);
     }
 
     .meta-text {
       font-size: 13px;
-      opacity: 0.86;
+      color: var(--text-soft);
       margin-bottom: 20px;
     }
 
@@ -277,34 +475,68 @@
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.12);
       border-radius: 22px;
-      padding: 16px;
+      padding: 18px;
+      position: relative;
+      overflow: hidden;
     }
 
-    .form-label {
-      text-align: left;
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.7fr 1fr;
+      gap: 12px;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 8px; }
+
+    .field label {
       font-size: 13px;
-      margin: 10px 0 8px;
       opacity: 0.9;
     }
 
-    input {
+    input, select {
       width: 100%;
-      padding: 14px 16px;
+      padding: 14px 15px;
       border-radius: 16px;
       border: 1px solid rgba(255,255,255,0.16);
-      background: rgba(255,255,255,0.92);
-      color: #2b1740;
-      outline: none;
+      background: rgba(255,255,255,0.94);
+      color: #2d1740;
       font-size: 15px;
+      outline: none;
     }
 
     input::placeholder { color: #735c8a; }
 
+    .hint {
+      font-size: 12px;
+      color: rgba(255,255,255,0.78);
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+
+    .consent {
+      margin-top: 14px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      text-align: left;
+      font-size: 13px;
+      color: rgba(255,255,255,0.88);
+      line-height: 1.5;
+    }
+
+    .consent input {
+      width: 18px;
+      height: 18px;
+      margin-top: 1px;
+      padding: 0;
+      accent-color: #c86fff;
+    }
+
     .actions {
       display: flex;
       gap: 10px;
-      margin-top: 14px;
       flex-wrap: wrap;
+      margin-top: 16px;
     }
 
     button {
@@ -313,20 +545,18 @@
       padding: 14px 18px;
       font-weight: 700;
       cursor: pointer;
-      transition: transform 0.2s ease, opacity 0.2s ease;
+      transition: transform .2s ease, opacity .2s ease;
     }
 
-    button:hover {
-      transform: translateY(-1px);
-      opacity: 0.96;
-    }
+    button:hover { transform: translateY(-1px); opacity: .97; }
+    button:disabled { opacity: .65; cursor: not-allowed; transform: none; }
 
     .primary-btn {
       flex: 1;
-      min-width: 170px;
-      background: linear-gradient(90deg, #c66bff, #f1a6ff);
+      min-width: 180px;
+      background: linear-gradient(90deg, #c66bff, #f0a8ff);
       color: white;
-      box-shadow: 0 10px 26px rgba(209, 110, 255, 0.32);
+      box-shadow: 0 10px 26px rgba(209,110,255,.3);
     }
 
     .secondary-btn {
@@ -336,57 +566,103 @@
     }
 
     .telegram-btn {
-      display: inline-block;
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      text-decoration: none;
       margin-top: 14px;
       padding: 13px 18px;
       border-radius: 16px;
       background: #0088cc;
       color: white;
-      text-decoration: none;
       font-weight: 700;
-      width: 100%;
+    }
+
+    .footer-links {
+      margin-top: 18px;
+      font-size: 12px;
+      opacity: .92;
+    }
+
+    .footer-links a {
+      color: white;
+      text-decoration: none;
+      margin: 0 6px;
+    }
+
+    .bottom-note {
+      margin-top: 16px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.72);
+      line-height: 1.5;
+    }
+
+    .side-card {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 22px;
+      padding: 18px;
+    }
+
+    .side-card h2 {
+      margin: 0 0 10px;
+      font-size: 24px;
+    }
+
+    .side-card p {
+      margin: 0 0 12px;
+      color: var(--text-soft);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .side-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .side-item {
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      font-size: 14px;
+      line-height: 1.5;
     }
 
     .admin-panel {
       display: none;
       padding: 22px;
-      max-height: 78vh;
+      margin-top: 16px;
+      max-height: 75vh;
       overflow: hidden;
     }
 
     .admin-top {
       display: flex;
       justify-content: space-between;
-      align-items: center;
       gap: 12px;
-      margin-bottom: 16px;
+      align-items: center;
+      margin-bottom: 14px;
     }
 
-    .admin-top h2 {
+    .admin-top h3 {
       margin: 0;
       font-size: 22px;
     }
 
-    .admin-close {
-      padding: 10px 14px;
-      border-radius: 14px;
-      background: rgba(255,255,255,0.14);
-      color: white;
-      border: 1px solid rgba(255,255,255,0.14);
-      font-size: 13px;
-      font-weight: 700;
-    }
-
     .admin-note {
       font-size: 12px;
-      color: rgba(255,255,255,0.75);
-      margin-bottom: 14px;
-      line-height: 1.4;
+      color: rgba(255,255,255,0.78);
+      line-height: 1.5;
+      margin-bottom: 12px;
     }
 
     .admin-lista {
+      max-height: calc(75vh - 110px);
       overflow: auto;
-      max-height: calc(78vh - 110px);
       padding-right: 4px;
     }
 
@@ -415,16 +691,15 @@
       font-weight: 700;
     }
 
-    .admin-info { min-width: 0; }
-    .admin-item strong { display: block; font-size: 15px; }
-    .admin-item small { display: block; font-size: 13px; color: rgba(255,255,255,0.8); }
+    .admin-info strong { display: block; font-size: 15px; }
+    .admin-info small { display: block; font-size: 13px; color: rgba(255,255,255,0.8); }
 
     .delete-btn {
       padding: 10px 12px;
       border-radius: 12px;
-      background: rgba(255, 84, 123, 0.18);
+      background: rgba(255,84,123,.18);
       color: white;
-      border: 1px solid rgba(255, 114, 147, 0.28);
+      border: 1px solid rgba(255,114,147,.28);
       font-size: 12px;
       font-weight: 700;
       white-space: nowrap;
@@ -432,13 +707,12 @@
 
     .admin-trigger {
       position: fixed;
-      bottom: 14px;
       right: 14px;
-      z-index: 3;
+      bottom: 14px;
+      z-index: 4;
     }
 
     .admin-trigger button {
-      padding: 12px 14px;
       border-radius: 999px;
       background: rgba(255,255,255,0.14);
       color: white;
@@ -446,23 +720,11 @@
       backdrop-filter: blur(10px);
     }
 
-    .footer-links {
-      margin-top: 18px;
-      font-size: 12px;
-      opacity: 0.9;
-    }
-
-    .footer-links a {
-      color: white;
-      text-decoration: none;
-      margin: 0 6px;
-    }
-
     .modal-overlay {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(8, 0, 20, 0.72);
+      background: rgba(8, 0, 20, 0.74);
       z-index: 20;
       align-items: center;
       justify-content: center;
@@ -471,7 +733,7 @@
 
     .modal-box {
       width: min(92vw, 720px);
-      background: linear-gradient(180deg, rgba(83,20,124,0.98), rgba(54,10,94,0.98));
+      background: linear-gradient(180deg, rgba(83,20,124,.98), rgba(54,10,94,.98));
       border: 1px solid rgba(255,255,255,0.14);
       border-radius: 24px;
       box-shadow: 0 20px 60px rgba(0,0,0,0.35);
@@ -490,10 +752,7 @@
       margin-bottom: 10px;
     }
 
-    .modal-top h3 {
-      margin: 0;
-      font-size: 22px;
-    }
+    .modal-top h3 { margin: 0; font-size: 22px; }
 
     .modal-close {
       padding: 10px 12px;
@@ -505,38 +764,58 @@
       font-weight: 700;
     }
 
-    .modal-box p {
-      margin: 0 0 12px;
-      line-height: 1.7;
-      color: rgba(255,255,255,0.92);
-      font-size: 15px;
-    }
-
-    .modal-box ul {
-      margin: 0 0 14px 18px;
-      padding: 0;
-      line-height: 1.7;
-      color: rgba(255,255,255,0.92);
-      font-size: 15px;
-    }
-
+    .modal-box p,
     .modal-box li {
-      margin-bottom: 8px;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.92);
+      font-size: 15px;
     }
 
-    @media (max-width: 900px) {
+    .modal-box ul { margin: 0 0 14px 18px; padding: 0; }
+    .modal-box li { margin-bottom: 8px; }
+
+    .celebration {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .burst-item {
+      position: absolute;
+      bottom: 12px;
+      opacity: 0;
+      animation: burstUp 1.8s ease forwards;
+      text-shadow: 0 0 12px rgba(255,255,255,0.45);
+    }
+
+    .show-burst { display: block; }
+
+    @keyframes burstUp {
+      0% { transform: translateY(0) scale(.8) rotate(0deg); opacity: 0; }
+      15% { opacity: 1; }
+      100% { transform: translateY(-220px) scale(1.2) rotate(18deg); opacity: 0; }
+    }
+
+    @media (max-width: 1080px) {
       .layout { grid-template-columns: 1fr; }
-      .admin-panel { max-height: none; }
-      .admin-lista { max-height: 340px; }
     }
 
-    @media (max-width: 520px) {
-      .card { padding: 24px 18px; }
-      h1 { font-size: 31px; }
+    @media (max-width: 840px) {
+      .form-grid { grid-template-columns: 1fr 1fr; }
+      .field-full { grid-column: 1 / -1; }
+    }
+
+    @media (max-width: 640px) {
+      .page { padding: 18px 12px; }
+      .card { padding: 22px 16px; }
+      .stats { grid-template-columns: 1fr; }
+      .form-grid { grid-template-columns: 1fr; }
       .actions { flex-direction: column; }
       .primary-btn, .secondary-btn { width: 100%; }
       .admin-item { grid-template-columns: 44px 1fr; }
       .delete-btn { grid-column: 1 / -1; width: 100%; }
+      .admin-top { flex-direction: column; align-items: stretch; }
     }
   </style></head>
 <body>
@@ -546,72 +825,121 @@
     <div class="blob blob3"></div>
     <div class="blob blob4"></div>
   </div>  <div class="page">
-    <div class="layout" id="siteCard">
+    <div class="layout">
       <div class="card">
-        <div class="badge">ARMY BRASIL • CAMPANHA</div>
-        <h1>💜 BTS no Brasil</h1>
-        <p class="sub">Assine a campanha e ajude a mostrar a força do Brasil para abrir novas datas de show.</p><div class="stats">
+        <div class="eyebrow">ARMY BRASIL • ABAIXO-ASSINADO</div>
+        <h1>Novas Datas — BTS WORLD TOUR 'ARIRANG' 💜</h1>
+        <p class="sub">Assine a campanha e ajude a mostrar a força do Brasil na turnê ARIRANG para abrir novas datas.</p><div class="stats">
       <div class="stat-box">
         <span>Assinaturas</span>
         <strong id="contador">0</strong>
       </div>
       <div class="stat-box">
-        <span>Meta</span>
+        <span>Meta inicial</span>
         <strong>1.000.000</strong>
       </div>
     </div>
 
-    <div class="barra">
-      <div id="progresso" class="progresso"></div>
-    </div>
-    <div class="meta-text">Cada assinatura fortalece a campanha 💜</div>
+    <div class="barra"><div id="progresso" class="progresso"></div></div>
+    <div class="meta-text">Cada assinatura fortalece a mobilização nacional 💜</div>
 
     <div class="form-wrap">
-      <div class="form-label">Nome</div>
-      <input type="text" id="nome" placeholder="Digite seu nome">
+      <div class="celebration" id="celebration"></div>
+      <div class="form-grid">
+        <div class="field field-full">
+          <label for="nome">Nome completo</label>
+          <input id="nome" type="text" placeholder="Nome e sobrenome" autocomplete="name">
+        </div>
 
-      <div class="form-label">Cidade</div>
-      <input type="text" id="cidade" placeholder="Digite sua cidade">
+        <div class="field">
+          <label for="estado">Estado</label>
+          <select id="estado"></select>
+        </div>
 
-      <div class="actions">
-        <button class="primary-btn" onclick="assinar()">Assinar agora</button>
-        <button class="secondary-btn" onclick="compartilhar()">Compartilhar</button>
+        <div class="field field-full">
+          <label for="cidade">Cidade</label>
+          <input id="cidade" type="text" placeholder="Sua cidade" autocomplete="address-level2">
+        </div>
       </div>
 
-      <a class="telegram-btn" href="https://t.me/+VRzrh1UZEqQ3MTRh" target="_blank">📲 Entrar no Grupo do Telegram</a>
+      <div class="hint">Somente nomes completos são aceitos. O site também bloqueia novas assinaturas no mesmo dispositivo ou navegador.</div>
+
+      <label class="consent">
+        <input type="checkbox" id="consentimento">
+        <span>Confirmo que estou assinando de forma legítima e que li as informações de privacidade, termos de uso e transparência do projeto.</span>
+      </label>
+
+      <div class="actions">
+        <button class="primary-btn" id="submitBtn">Assinar agora</button>
+        <button class="secondary-btn" id="shareBtn">Compartilhar</button>
+      </div>
+
+      <a class="telegram-btn" href="https://t.me/+VRzrh1UZEqQ3MTRh" target="_blank" rel="noopener noreferrer">📲 Entrar no Grupo do Telegram</a>
     </div>
 
     <div class="footer-links">
-      <a href="javascript:void(0)" onclick="abrirModal('sobreModal')">Sobre</a> |
-      <a href="javascript:void(0)" onclick="abrirModal('privacidadeModal')">Privacidade</a> |
-      <a href="javascript:void(0)" onclick="abrirModal('termosModal')">Termos</a> |
-      <a href="javascript:void(0)" onclick="abrirModal('transparenciaModal')">Transparência</a>
+      <a href="javascript:void(0)" data-open-modal="sobreModal">Sobre</a> |
+      <a href="javascript:void(0)" data-open-modal="privacidadeModal">Privacidade</a> |
+      <a href="javascript:void(0)" data-open-modal="termosModal">Termos</a> |
+      <a href="javascript:void(0)" data-open-modal="transparenciaModal">Transparência</a>
     </div>
+
+    <div class="bottom-note">Este projeto foi desenvolvido com apoio de ferramentas de inteligência artificial em sua criação e evolução.</div>
   </div>
 
-  <div class="admin-panel" id="adminPanel">
-    <div class="admin-top">
-      <h2>Área do admin</h2>
-      <button class="admin-close" onclick="fecharAdmin()">Sair do admin</button>
+  <div>
+    <div class="side-card">
+      <h2>Objetivo da mobilização</h2>
+      <p>O site foi criado para reunir uma base organizada de apoio por novas datas no Brasil durante a BTS WORLD TOUR 'ARIRANG'.</p>
+      <div class="side-list">
+        <div class="side-item">Assinaturas com nome completo, estado e cidade.</div>
+        <div class="side-item">Bloqueio por dispositivo ou navegador com checagem local e validação técnica básica no banco.</div>
+        <div class="side-item">Admin com login real via Firebase Authentication, em vez de senha exposta no site.</div>
+        <div class="side-item">Prestação de contas e atualizações publicadas no grupo oficial do Telegram da campanha.</div>
+      </div>
+      <p style="margin-top:14px;">Trilha sonora oficial da turnê não foi embutida nesta versão para evitar uso não autorizado de material protegido. Se você tiver um áudio próprio ou licenciado, dá para adicionar depois.</p>
     </div>
-    <div class="admin-note">Aqui aparecem as assinaturas registradas e agora você pode excluir uma por uma.</div>
-    <div class="admin-lista" id="adminLista"></div>
+
+    <div class="admin-panel" id="adminPanel">
+      <div class="admin-top">
+        <h3>Área do admin</h3>
+        <button class="secondary-btn" id="adminLogoutBtn">Sair do admin</button>
+      </div>
+      <div class="admin-note">Painel restrito para leitura e exclusão de assinaturas. Para proteção real, use também regras do Firestore para permitir leitura e exclusão apenas ao admin autenticado.</div>
+      <div class="admin-lista" id="adminLista"></div>
+    </div>
   </div>
 </div>
 
-  </div>  <div class="admin-trigger" id="adminBtn">
-    <button onclick="abrirAdmin()">Admin</button>
-  </div>
-  <div class="modal-overlay" id="sobreModal" onclick="if(event.target === this) fecharModal('sobreModal')">
+  </div>  <div class="admin-trigger" id="adminTrigger">
+    <button id="openAdminBtn">Admin</button>
+  </div>  <div class="modal-overlay" id="adminLoginModal" onclick="if(event.target === this) fecharModal('adminLoginModal')">
+    <div class="modal-box" style="max-width:480px;">
+      <div class="modal-top">
+        <h3>Login do admin</h3>
+        <button class="modal-close" onclick="fecharModal('adminLoginModal')">Fechar</button>
+      </div>
+      <div class="field" style="margin-bottom:12px;">
+        <label for="adminEmail">E-mail</label>
+        <input id="adminEmail" type="email" placeholder="admin@exemplo.com" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="adminSenha">Senha</label>
+        <input id="adminSenha" type="password" placeholder="Sua senha" autocomplete="current-password">
+      </div>
+      <div class="actions" style="margin-top:14px;">
+        <button class="primary-btn" id="adminLoginBtn">Entrar no admin</button>
+      </div>
+    </div>
+  </div>  <div class="modal-overlay" id="sobreModal" onclick="if(event.target === this) fecharModal('sobreModal')">
     <div class="modal-box">
       <div class="modal-top">
         <h3>Sobre</h3>
         <button class="modal-close" onclick="fecharModal('sobreModal')">Fechar</button>
       </div>
-      <p>O BTS no Brasil é uma campanha criada por fãs para reunir assinaturas e demonstrar, de forma organizada, o forte interesse do público brasileiro por novas datas de shows da próxima turnê do grupo.</p>
-      <p>O BTS é reconhecido mundialmente por gerar alta demanda de ingressos. Em diferentes fases da carreira e em grandes turnês, entradas se esgotaram rapidamente e, em vários casos, datas extras precisaram ser abertas para atender o público.</p>
-      <p>O Brasil possui uma das maiores comunidades de fãs do grupo, com grande engajamento nas redes sociais, forte mobilização digital e alto interesse em produtos, conteúdos e eventos relacionados ao BTS.</p>
-      <p>Esta campanha busca transformar esse interesse em um sinal público visível, reforçando a necessidade de inclusão de novas datas no Brasil para que mais fãs tenham a oportunidade de participar de futuros shows ao vivo.</p>
+      <p>Este abaixo-assinado foi criado por fãs para demonstrar, de forma organizada, o interesse do público brasileiro por novas datas da BTS WORLD TOUR 'ARIRANG' no Brasil. O nome da turnê aparece nas páginas oficiais da BIGHIT e da Weverse. ([ibighit.com](https://ibighit.com/en/bts/tour/?utm_source=chatgpt.com))</p>
+      <p>As páginas oficiais da turnê já listam datas na América Latina, incluindo apresentações em São Paulo em outubro de 2026, o que reforça o contexto real da mobilização por mais oportunidades de acesso para fãs no país. ([btsworldtourofficial.com](https://btsworldtourofficial.com/?utm_source=chatgpt.com))</p>
+      <p>A proposta do site é reunir apoio público, fortalecer a campanha e facilitar a divulgação em rede, especialmente entre fãs que desejam demonstrar demanda por novas datas de forma visível e organizada.</p>
     </div>
   </div>  <div class="modal-overlay" id="privacidadeModal" onclick="if(event.target === this) fecharModal('privacidadeModal')">
     <div class="modal-box">
@@ -619,17 +947,15 @@
         <h3>Política de Privacidade</h3>
         <button class="modal-close" onclick="fecharModal('privacidadeModal')">Fechar</button>
       </div>
-      <p>Esta campanha coleta apenas as informações inseridas voluntariamente no formulário, como nome e cidade, com a finalidade de registrar assinaturas e organizar a mobilização do site.</p>
-      <p>As informações podem ser utilizadas para:</p>
+      <p>A Lei Geral de Proteção de Dados Pessoais, a LGPD, protege direitos de liberdade e privacidade no tratamento de dados em meios digitais e físicos. ([gov.br](https://www.gov.br/esporte/pt-br/acesso-a-informacao/lgpd?utm_source=chatgpt.com))</p>
+      <p>Neste projeto, os dados informados no formulário se limitam a nome completo, estado e cidade, usados para registro da assinatura, contagem da mobilização e administração técnica do abaixo-assinado.</p>
       <ul>
-        <li>contabilizar o número total de assinaturas da campanha;</li>
-        <li>identificar participações repetidas no mesmo dispositivo ou navegador;</li>
-        <li>administrar a lista de assinaturas pela área de administração do site;</li>
-        <li>melhorar a experiência de navegação e o funcionamento da página.</li>
+        <li>Os dados podem ser armazenados em base digital para registrar a assinatura e organizar a campanha.</li>
+        <li>O site utiliza recursos do navegador para reduzir assinaturas repetidas no mesmo dispositivo ou navegador.</li>
+        <li>Serviços técnicos de terceiros, como hospedagem e infraestrutura do Firebase, podem tratar dados estritamente para funcionamento do site.</li>
+        <li>O projeto não tem como finalidade vender cadastro de apoiadores.</li>
       </ul>
-      <p>O site pode utilizar recursos do navegador, como armazenamento local, para evitar envios repetidos no mesmo aparelho. Também poderão ser utilizados cookies, tecnologias semelhantes e serviços de terceiros voltados à medição de acesso, anúncios ou monetização, quando aplicável.</p>
-      <p>Os dados informados não têm a finalidade de venda de cadastro. Ainda assim, por se tratar de uma campanha online, nenhuma transmissão de dados pela internet pode ser considerada absolutamente livre de riscos.</p>
-      <p>Ao continuar utilizando este site e enviar sua assinatura, você declara estar ciente desta política e concorda com o uso das informações para os fins descritos acima.</p>
+      <p>Embora o projeto adote medidas técnicas razoáveis para proteção, nenhuma operação online pode ser considerada absolutamente livre de risco. Ao assinar, você declara ciência dessas condições e concorda com o tratamento dos dados dentro da finalidade da campanha.</p>
     </div>
   </div>  <div class="modal-overlay" id="termosModal" onclick="if(event.target === this) fecharModal('termosModal')">
     <div class="modal-box">
@@ -637,32 +963,25 @@
         <h3>Termos de Uso</h3>
         <button class="modal-close" onclick="fecharModal('termosModal')">Fechar</button>
       </div>
-      <p>Ao acessar e utilizar este site, você concorda em participar da campanha de forma legítima, responsável e compatível com a proposta de mobilização de fãs.</p>
-      <p>Ao enviar uma assinatura, você se compromete a:</p>
+      <p>Ao utilizar este site, você concorda em participar da mobilização de forma legítima, responsável e compatível com a proposta do abaixo-assinado.</p>
       <ul>
-        <li>fornecer informações verdadeiras ou minimamente identificáveis dentro do contexto da campanha;</li>
-        <li>não utilizar robôs, automações ou métodos fraudulentos para inflar o número de assinaturas;</li>
-        <li>não tentar prejudicar, alterar ou burlar o funcionamento técnico do site;</li>
-        <li>respeitar a finalidade da campanha, que é demonstrar interesse real por novas datas de shows no Brasil.</li>
+        <li>Somente assinaturas com nome completo são aceitas.</li>
+        <li>O uso de automações, robôs, fraude ou qualquer tentativa de inflar artificialmente o número de assinaturas é proibido.</li>
+        <li>Assinaturas duplicadas, ofensivas, falsas ou incompatíveis com a proposta da campanha podem ser removidas pela administração.</li>
+        <li>O funcionamento técnico, o visual e as regras do projeto podem ser atualizados para melhoria de experiência, segurança e organização.</li>
       </ul>
-      <p>A administração do site poderá remover assinaturas consideradas indevidas, duplicadas, ofensivas, automatizadas ou incompatíveis com a proposta da campanha, inclusive sem aviso prévio.</p>
-      <p>O conteúdo, o visual, os recursos e as regras de funcionamento do site podem ser alterados a qualquer momento para melhorar a experiência dos usuários, a segurança e a organização da mobilização.</p>
-      <p>O uso contínuo do site após eventuais atualizações representa sua concordância com a versão mais recente destes termos.</p>
+      <p>Este site representa uma mobilização pública de fãs. No Brasil, petições online podem ter força social e política, mas não equivalem automaticamente ao modelo formal de iniciativa legislativa popular nem substituem assinaturas eletrônicas validadas em sistemas oficiais. O Senado mantém canais próprios de participação, como o e-Cidadania, e o gov.br informa que assinaturas eletrônicas possuem validade legal em contextos específicos. ([www12.senado.leg.br](https://www12.senado.leg.br/ecidadania?utm_source=chatgpt.com))</p>
     </div>
-  </div>
-  <div class="modal-overlay" id="transparenciaModal" onclick="if(event.target === this) fecharModal('transparenciaModal')">
+  </div>  <div class="modal-overlay" id="transparenciaModal" onclick="if(event.target === this) fecharModal('transparenciaModal')">
     <div class="modal-box">
       <div class="modal-top">
         <h3>Transparência</h3>
         <button class="modal-close" onclick="fecharModal('transparenciaModal')">Fechar</button>
       </div>
-      <p>Este projeto tem como objetivo não apenas mobilizar fãs, mas também gerar impacto positivo. Por isso, qualquer receita obtida por meio de monetização do site poderá ser destinada de forma responsável e transparente.</p>
-      <p>A proposta é que aproximadamente 50% dos valores arrecadados sejam direcionados a iniciativas sociais, com prioridade para organizações que atuam na proteção de animais e apoio a pessoas em situação de vulnerabilidade.</p>
-      <p>Os outros 50% serão utilizados para a manutenção, melhoria e expansão do site, bem como para o desenvolvimento de novos canais e ferramentas que fortaleçam a campanha e a comunidade envolvida.</p>
-      <p>O compromisso deste projeto é evoluir com responsabilidade, mantendo clareza sobre seus objetivos e a destinação dos recursos gerados.</p>
+      <p>Este projeto poderá utilizar monetização compatível com a página, como anúncios e outras formas de apoio digital, para sustentar sua continuidade e ampliar seu alcance.</p>
+      <p>A proposta atual é destinar aproximadamente 50% dos valores arrecadados a organizações que atuem na proteção de animais em situação de vulnerabilidade. Os outros 50% poderão ser destinados à manutenção, melhoria e evolução do site, bem como ao fortalecimento dos demais canais vinculados ao projeto.</p>
+      <p>A prestação de contas relacionada à monetização e aos repasses será publicada no grupo oficial do Telegram da campanha, como forma de dar mais visibilidade e transparência para a comunidade.</p>
     </div>
-  </div>  <div style="text-align:center;font-size:12px;opacity:0.7;margin:20px;">
-    Este projeto foi desenvolvido com apoio de ferramentas de inteligência artificial, contribuindo para sua criação e evolução.
   </div>
 </body>
 </html>
