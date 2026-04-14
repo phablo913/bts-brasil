@@ -470,9 +470,8 @@
     }
 
     .modal-box {
-      width: 100%;
-      max-width: 620px;
-      background: linear-gradient(180deg, rgba(83,20,124,0.95), rgba(54,10,94,0.95));
+      width: min(92vw, 720px);
+      background: linear-gradient(180deg, rgba(83,20,124,0.98), rgba(54,10,94,0.98));
       border: 1px solid rgba(255,255,255,0.14);
       border-radius: 24px;
       box-shadow: 0 20px 60px rgba(0,0,0,0.35);
@@ -508,8 +507,21 @@
 
     .modal-box p {
       margin: 0 0 12px;
-      line-height: 1.6;
+      line-height: 1.7;
       color: rgba(255,255,255,0.92);
+      font-size: 15px;
+    }
+
+    .modal-box ul {
+      margin: 0 0 14px 18px;
+      padding: 0;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.92);
+      font-size: 15px;
+    }
+
+    .modal-box li {
+      margin-bottom: 8px;
     }
 
     @media (max-width: 900px) {
@@ -572,7 +584,8 @@
     <div class="footer-links">
       <a href="javascript:void(0)" onclick="abrirModal('sobreModal')">Sobre</a> |
       <a href="javascript:void(0)" onclick="abrirModal('privacidadeModal')">Privacidade</a> |
-      <a href="javascript:void(0)" onclick="abrirModal('termosModal')">Termos</a>
+      <a href="javascript:void(0)" onclick="abrirModal('termosModal')">Termos</a> |
+      <a href="javascript:void(0)" onclick="abrirModal('transparenciaModal')">Transparência</a>
     </div>
   </div>
 
@@ -595,15 +608,10 @@
         <h3>Sobre</h3>
         <button class="modal-close" onclick="fecharModal('sobreModal')">Fechar</button>
       </div>
-      <p>O BTS no Brasil é uma campanha criada por fãs com o objetivo de demonstrar o enorme interesse do público brasileiro por novas datas de shows da próxima turnê do grupo.</p>
-      <p>O BTS é conhecido mundialmente por esgotar ingressos em tempo recorde. Em diversas turnês, como “Love Yourself” e “Permission to Dance”, ingressos se esgotaram em minutos e milhões de fãs ficaram em filas virtuais sem conseguir comprar.</p>
-      <p>Em cidades como Los Angeles, Seul e Londres, foram necessárias várias datas extras para atender a demanda. Em alguns casos, mais de 200 mil pessoas tentaram comprar ingressos simultaneamente para um único show.</p>
-      <p>No Brasil, a base de fãs (ARMY) é uma das maiores do mundo, com milhões de seguidores nas redes sociais, grande engajamento digital e forte histórico de consumo de produtos e conteúdos do grupo.</p>
-      <p>Mesmo sem shows recentes no país, o interesse continua extremamente alto, com fãs constantemente pedindo novas apresentações e demonstrando disposição para comprar ingressos rapidamente.</p>
-      <p>Esta campanha reúne assinaturas justamente para evidenciar essa demanda real e reforçar a necessidade de inclusão de novas datas no Brasil, aumentando as chances de mais fãs conseguirem participar de futuros shows.</p>
-    </div>
-      <p>O BTS no Brasil é uma campanha criada por fãs para reunir assinaturas e demonstrar o interesse do público brasileiro em novas datas de show no país.</p>
-      <p>O objetivo do site é organizar a mobilização, fortalecer o alcance da campanha e facilitar o compartilhamento com outros fãs.</p>
+      <p>O BTS no Brasil é uma campanha criada por fãs para reunir assinaturas e demonstrar, de forma organizada, o forte interesse do público brasileiro por novas datas de shows da próxima turnê do grupo.</p>
+      <p>O BTS é reconhecido mundialmente por gerar alta demanda de ingressos. Em diferentes fases da carreira e em grandes turnês, entradas se esgotaram rapidamente e, em vários casos, datas extras precisaram ser abertas para atender o público.</p>
+      <p>O Brasil possui uma das maiores comunidades de fãs do grupo, com grande engajamento nas redes sociais, forte mobilização digital e alto interesse em produtos, conteúdos e eventos relacionados ao BTS.</p>
+      <p>Esta campanha busca transformar esse interesse em um sinal público visível, reforçando a necessidade de inclusão de novas datas no Brasil para que mais fãs tenham a oportunidade de participar de futuros shows ao vivo.</p>
     </div>
   </div>  <div class="modal-overlay" id="privacidadeModal" onclick="if(event.target === this) fecharModal('privacidadeModal')">
     <div class="modal-box">
@@ -611,9 +619,17 @@
         <h3>Política de Privacidade</h3>
         <button class="modal-close" onclick="fecharModal('privacidadeModal')">Fechar</button>
       </div>
-      <p>Este site pode coletar nome e cidade informados no formulário de assinatura para fins de organização da campanha.</p>
-      <p>Os dados são usados para contabilizar participações e administrar o abaixo-assinado. O site também pode usar cookies ou tecnologias do navegador para melhorar a experiência e evitar envios repetidos no mesmo dispositivo.</p>
-      <p>Ao usar este site, você concorda com esse tratamento básico das informações para funcionamento da campanha.</p>
+      <p>Esta campanha coleta apenas as informações inseridas voluntariamente no formulário, como nome e cidade, com a finalidade de registrar assinaturas e organizar a mobilização do site.</p>
+      <p>As informações podem ser utilizadas para:</p>
+      <ul>
+        <li>contabilizar o número total de assinaturas da campanha;</li>
+        <li>identificar participações repetidas no mesmo dispositivo ou navegador;</li>
+        <li>administrar a lista de assinaturas pela área de administração do site;</li>
+        <li>melhorar a experiência de navegação e o funcionamento da página.</li>
+      </ul>
+      <p>O site pode utilizar recursos do navegador, como armazenamento local, para evitar envios repetidos no mesmo aparelho. Também poderão ser utilizados cookies, tecnologias semelhantes e serviços de terceiros voltados à medição de acesso, anúncios ou monetização, quando aplicável.</p>
+      <p>Os dados informados não têm a finalidade de venda de cadastro. Ainda assim, por se tratar de uma campanha online, nenhuma transmissão de dados pela internet pode ser considerada absolutamente livre de riscos.</p>
+      <p>Ao continuar utilizando este site e enviar sua assinatura, você declara estar ciente desta política e concorda com o uso das informações para os fins descritos acima.</p>
     </div>
   </div>  <div class="modal-overlay" id="termosModal" onclick="if(event.target === this) fecharModal('termosModal')">
     <div class="modal-box">
@@ -621,10 +637,32 @@
         <h3>Termos de Uso</h3>
         <button class="modal-close" onclick="fecharModal('termosModal')">Fechar</button>
       </div>
-      <p>Ao utilizar este site, você concorda em participar da campanha de forma legítima, fornecendo informações verdadeiras no momento da assinatura.</p>
-      <p>Assinaturas consideradas indevidas, duplicadas, automatizadas ou fraudulentas podem ser removidas pela administração do site.</p>
-      <p>O conteúdo e a estrutura da campanha podem ser ajustados a qualquer momento para melhorar a experiência dos usuários e a organização das assinaturas.</p>
+      <p>Ao acessar e utilizar este site, você concorda em participar da campanha de forma legítima, responsável e compatível com a proposta de mobilização de fãs.</p>
+      <p>Ao enviar uma assinatura, você se compromete a:</p>
+      <ul>
+        <li>fornecer informações verdadeiras ou minimamente identificáveis dentro do contexto da campanha;</li>
+        <li>não utilizar robôs, automações ou métodos fraudulentos para inflar o número de assinaturas;</li>
+        <li>não tentar prejudicar, alterar ou burlar o funcionamento técnico do site;</li>
+        <li>respeitar a finalidade da campanha, que é demonstrar interesse real por novas datas de shows no Brasil.</li>
+      </ul>
+      <p>A administração do site poderá remover assinaturas consideradas indevidas, duplicadas, ofensivas, automatizadas ou incompatíveis com a proposta da campanha, inclusive sem aviso prévio.</p>
+      <p>O conteúdo, o visual, os recursos e as regras de funcionamento do site podem ser alterados a qualquer momento para melhorar a experiência dos usuários, a segurança e a organização da mobilização.</p>
+      <p>O uso contínuo do site após eventuais atualizações representa sua concordância com a versão mais recente destes termos.</p>
     </div>
+  </div>
+  <div class="modal-overlay" id="transparenciaModal" onclick="if(event.target === this) fecharModal('transparenciaModal')">
+    <div class="modal-box">
+      <div class="modal-top">
+        <h3>Transparência</h3>
+        <button class="modal-close" onclick="fecharModal('transparenciaModal')">Fechar</button>
+      </div>
+      <p>Este projeto tem como objetivo não apenas mobilizar fãs, mas também gerar impacto positivo. Por isso, qualquer receita obtida por meio de monetização do site poderá ser destinada de forma responsável e transparente.</p>
+      <p>A proposta é que aproximadamente 50% dos valores arrecadados sejam direcionados a iniciativas sociais, com prioridade para organizações que atuam na proteção de animais e apoio a pessoas em situação de vulnerabilidade.</p>
+      <p>Os outros 50% serão utilizados para a manutenção, melhoria e expansão do site, bem como para o desenvolvimento de novos canais e ferramentas que fortaleçam a campanha e a comunidade envolvida.</p>
+      <p>O compromisso deste projeto é evoluir com responsabilidade, mantendo clareza sobre seus objetivos e a destinação dos recursos gerados.</p>
+    </div>
+  </div>  <div style="text-align:center;font-size:12px;opacity:0.7;margin:20px;">
+    Este projeto foi desenvolvido com apoio de ferramentas de inteligência artificial, contribuindo para sua criação e evolução.
   </div>
 </body>
 </html>
