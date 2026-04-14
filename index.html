@@ -100,6 +100,78 @@
       }, 2600);
     }
 
+    function abrirAdminMenu() {
+      document.getElementById("adminMenuPanel").classList.add("open");
+      document.getElementById("adminBackdrop").classList.add("show");
+    }
+
+    function fecharAdminMenu() {
+      document.getElementById("adminMenuPanel").classList.remove("open");
+      document.getElementById("adminBackdrop").classList.remove("show");
+    }
+
+    function mostrarAdminAba(aba) {
+      document.querySelectorAll(".admin-tab-content").forEach(el => el.style.display = "none");
+      document.querySelectorAll(".admin-nav button").forEach(btn => btn.classList.remove("active"));
+      document.getElementById(aba).style.display = "block";
+      document.querySelector(`[data-admin-tab="${aba}"]`)?.classList.add("active");
+    }
+
+    function renderizarRankingEstados(registros) {
+      const totais = {};
+      ESTADOS.forEach(uf => totais[uf] = 0);
+
+      registros.forEach(registro => {
+        const uf = (registro.estado || "").toUpperCase();
+        if (totais[uf] !== undefined) totais[uf] += 1;
+      });
+
+      const ranking = Object.entries(totais)
+        .filter(([, total]) => total > 0)
+        .sort((a, b) => b[1] - a[1]);
+
+      const rankingLista = document.getElementById("rankingLista");
+      const rankingGrafico = document.getElementById("rankingGrafico");
+      const topEstado = document.getElementById("topEstado");
+      const totalEstados = document.getElementById("totalEstados");
+      const totalAssinaturasAdmin = document.getElementById("totalAssinaturasAdmin");
+      rankingLista.innerHTML = "";
+      rankingGrafico.innerHTML = "";
+
+      totalAssinaturasAdmin.textContent = registros.length.toLocaleString("pt-BR");
+      totalEstados.textContent = ranking.length.toLocaleString("pt-BR");
+      topEstado.textContent = ranking.length ? ranking[0][0] : "—";
+
+      if (!ranking.length) {
+        rankingLista.innerHTML = '<div class="empty-state">Ainda não há assinaturas suficientes para exibir o ranking.</div>';
+        rankingGrafico.innerHTML = '<div class="empty-state">O gráfico aparecerá quando houver estados com assinaturas.</div>';
+        return;
+      }
+
+      const maior = ranking[0][1];
+      ranking.slice(0, 10).forEach(([estado, total], index) => {
+        const medalhas = ["🥇", "🥈", "🥉"];
+        const prefixo = medalhas[index] || `#${index + 1}`;
+
+        const item = document.createElement("div");
+        item.className = "ranking-item";
+        item.innerHTML = `<strong>${prefixo} ${estado}</strong><span>${total} assinatura${total > 1 ? 's' : ''}</span>`;
+        rankingLista.appendChild(item);
+
+        const barra = document.createElement("div");
+        barra.className = "chart-row";
+        const largura = Math.max((total / maior) * 100, 8);
+        barra.innerHTML = `
+          <div class="chart-label">${estado}</div>
+          <div class="chart-bar-wrap">
+            <div class="chart-bar" style="width:${largura}%"></div>
+          </div>
+          <div class="chart-value">${total}</div>
+        `;
+        rankingGrafico.appendChild(barra);
+      });
+    }
+
     async function assinaturaExistentePorDispositivo(fingerprintHash) {
       const q = query(
         collection(db, "assinaturas"),
@@ -247,28 +319,32 @@
       const q = query(collection(db, "assinaturas"), orderBy("createdAt", "desc"));
 
       adminUnsubscribe = onSnapshot(q, snapshot => {
+        const registros = snapshot.docs.map(registro => ({ id: registro.id, ...registro.data() }));
         adminListaEl.innerHTML = "";
-        snapshot.docs.forEach((registro, index) => {
-          const d = registro.data();
+
+        registros.forEach((registro, index) => {
           const item = document.createElement("div");
           item.className = "admin-item";
-          const nomeSeguro = (d.nome || "Sem nome").replace(/'/g, "\\'");
+          const nomeSeguro = (registro.nome || "Sem nome").replace(/'/g, "\\'");
           item.innerHTML = `
             <span>#${index + 1}</span>
             <div class="admin-info">
-              <strong>${d.nome || "Sem nome"}</strong>
-              <small>${d.estado || ""} • ${d.cidade || "Sem cidade"}</small>
+              <strong>${registro.nome || "Sem nome"}</strong>
+              <small>${registro.estado || ""} • ${registro.cidade || "Sem cidade"}</small>
             </div>
             <button class="delete-btn" onclick="excluirAssinatura('${registro.id}', '${nomeSeguro}')">Excluir</button>
           `;
           adminListaEl.appendChild(item);
         });
+
+        renderizarRankingEstados(registros);
       });
     }
 
     function desligarAdmin() {
       document.getElementById("adminPanel").style.display = "none";
       document.getElementById("adminTrigger").style.display = "block";
+      fecharAdminMenu();
       if (adminUnsubscribe) {
         adminUnsubscribe();
         adminUnsubscribe = null;
@@ -297,10 +373,19 @@
       document.getElementById("openAdminBtn").addEventListener("click", () => abrirModal("adminLoginModal"));
       document.getElementById("adminLoginBtn").addEventListener("click", loginAdmin);
       document.getElementById("adminLogoutBtn").addEventListener("click", sairAdmin);
+      document.getElementById("adminMenuBtn").addEventListener("click", abrirAdminMenu);
+      document.getElementById("adminMenuCloseBtn").addEventListener("click", fecharAdminMenu);
+      document.getElementById("adminBackdrop").addEventListener("click", fecharAdminMenu);
 
       document.querySelectorAll("[data-open-modal]").forEach(btn => {
         btn.addEventListener("click", () => abrirModal(btn.dataset.openModal));
       });
+
+      document.querySelectorAll("[data-admin-tab]").forEach(btn => {
+        btn.addEventListener("click", () => mostrarAdminAba(btn.dataset.adminTab));
+      });
+
+      mostrarAdminAba("adminAssinaturasTab");
     });
 
     onAuthStateChanged(auth, user => {
@@ -383,7 +468,7 @@
       width: 100%;
       max-width: 1220px;
       display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
+      grid-template-columns: 1fr;
       gap: 22px;
       align-items: start;
     }
@@ -598,46 +683,13 @@
       line-height: 1.5;
     }
 
-    .side-card {
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 22px;
-      padding: 18px;
-    }
-
-    .side-card h2 {
-      margin: 0 0 10px;
-      font-size: 24px;
-    }
-
-    .side-card p {
-      margin: 0 0 12px;
-      color: var(--text-soft);
-      line-height: 1.6;
-      font-size: 14px;
-    }
-
-    .side-list {
-      display: grid;
-      gap: 10px;
-      margin-top: 12px;
-    }
-
-    .side-item {
-      padding: 14px;
-      border-radius: 18px;
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.1);
-      font-size: 14px;
-      line-height: 1.5;
-    }
-
     .admin-panel {
       display: none;
       padding: 22px;
       margin-top: 16px;
       max-height: 75vh;
       overflow: hidden;
+      position: relative;
     }
 
     .admin-top {
@@ -651,6 +703,26 @@
     .admin-top h3 {
       margin: 0;
       font-size: 22px;
+    }
+
+    .admin-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .icon-btn {
+      width: 46px;
+      height: 46px;
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: white;
+      font-size: 22px;
+      padding: 0;
     }
 
     .admin-note {
@@ -718,6 +790,205 @@
       color: white;
       border: 1px solid rgba(255,255,255,0.15);
       backdrop-filter: blur(10px);
+    }
+
+    .admin-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 0, 20, 0.44);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s ease;
+      z-index: 25;
+    }
+
+    .admin-backdrop.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .admin-menu-panel {
+      position: fixed;
+      top: 0;
+      right: -430px;
+      width: min(430px, 92vw);
+      height: 100vh;
+      background: linear-gradient(180deg, rgba(60,10,95,.98), rgba(39,7,65,.98));
+      border-left: 1px solid rgba(255,255,255,0.12);
+      box-shadow: -18px 0 40px rgba(0,0,0,.32);
+      z-index: 26;
+      transition: right .28s ease;
+      padding: 18px;
+      overflow: auto;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .admin-menu-panel.open {
+      right: 0;
+    }
+
+    .admin-menu-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .admin-menu-top h4 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .admin-nav {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .admin-nav button {
+      background: rgba(255,255,255,0.08);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 12px 10px;
+      border-radius: 14px;
+      font-size: 13px;
+    }
+
+    .admin-nav button.active {
+      background: linear-gradient(90deg, #c66bff, #f0a8ff);
+      border-color: transparent;
+    }
+
+    .admin-tab-content {
+      display: none;
+    }
+
+    .ranking-box,
+    .chart-box,
+    .insight-box {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 18px;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+
+    .ranking-box h5,
+    .chart-box h5,
+    .insight-box h5 {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+
+    .ranking-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.06);
+      margin-bottom: 8px;
+      font-size: 14px;
+      align-items: center;
+    }
+
+    .ranking-item strong {
+      font-size: 14px;
+    }
+
+    .ranking-item span {
+      font-size: 13px;
+      color: rgba(255,255,255,0.82);
+    }
+
+    .chart-row {
+      display: grid;
+      grid-template-columns: 48px 1fr 44px;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .chart-label,
+    .chart-value {
+      font-size: 13px;
+      color: rgba(255,255,255,0.94);
+      font-weight: 700;
+    }
+
+    .chart-bar-wrap {
+      height: 14px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 999px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .chart-bar-wrap::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent 40%, rgba(255,255,255,0.08));
+      opacity: 0.5;
+    }
+
+    .chart-bar {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #c66bff, #ffd0ff);
+      box-shadow: 0 0 14px rgba(226, 168, 255, 0.42);
+      position: relative;
+      animation: growBar .7s ease;
+    }
+
+    .chart-bar::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 20px;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45));
+      opacity: 0.8;
+    }
+
+    @keyframes growBar {
+      from { width: 0; }
+    }
+
+    .empty-state {
+      font-size: 13px;
+      color: rgba(255,255,255,0.78);
+      line-height: 1.5;
+    }
+
+    .insight-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .insight-pill {
+      padding: 12px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .insight-pill span {
+      display: block;
+      font-size: 12px;
+      color: rgba(255,255,255,0.76);
+      margin-bottom: 6px;
+    }
+
+    .insight-pill strong {
+      display: block;
+      font-size: 18px;
     }
 
     .modal-overlay {
@@ -797,10 +1068,6 @@
       100% { transform: translateY(-220px) scale(1.2) rotate(18deg); opacity: 0; }
     }
 
-    @media (max-width: 1080px) {
-      .layout { grid-template-columns: 1fr; }
-    }
-
     @media (max-width: 840px) {
       .form-grid { grid-template-columns: 1fr 1fr; }
       .field-full { grid-column: 1 / -1; }
@@ -816,6 +1083,10 @@
       .admin-item { grid-template-columns: 44px 1fr; }
       .delete-btn { grid-column: 1 / -1; width: 100%; }
       .admin-top { flex-direction: column; align-items: stretch; }
+      .admin-actions { justify-content: space-between; }
+      .admin-nav { grid-template-columns: 1fr; }
+      .chart-row { grid-template-columns: 36px 1fr 34px; }
+      .insight-grid { grid-template-columns: 1fr; }
     }
   </style></head>
 <body>
@@ -887,20 +1158,66 @@
     <div class="bottom-note">Este projeto foi desenvolvido com apoio de ferramentas de inteligência artificial em sua criação e evolução.</div>
   </div>
 
-    <div class="admin-panel" id="adminPanel">
-      <div class="admin-top">
-        <h3>Área do admin</h3>
+  <div class="admin-panel" id="adminPanel">
+    <div class="admin-top">
+      <h3>Área do admin</h3>
+      <div class="admin-actions">
+        <button class="icon-btn" id="adminMenuBtn" aria-label="Abrir menu do admin">☰</button>
         <button class="secondary-btn" id="adminLogoutBtn">Sair do admin</button>
       </div>
-      <div class="admin-note">Painel restrito para leitura e exclusão de assinaturas. Para proteção real, use também regras do Firestore para permitir leitura e exclusão apenas ao admin autenticado.</div>
-      <div class="admin-lista" id="adminLista"></div>
     </div>
+    <div class="admin-note">O menu do admin tem acesso ao ranking por estado e à lista completa de assinaturas. Nada disso fica visível ao público.</div>
+    <div class="admin-lista" id="adminLista"></div>
   </div>
 </div>
 
   </div>  <div class="admin-trigger" id="adminTrigger">
     <button id="openAdminBtn">Admin</button>
-  </div>  <div class="modal-overlay" id="adminLoginModal" onclick="if(event.target === this) fecharModal('adminLoginModal')">
+  </div>  <div class="admin-backdrop" id="adminBackdrop"></div>  <aside class="admin-menu-panel" id="adminMenuPanel">
+    <div class="admin-menu-top">
+      <h4>Menu do admin</h4>
+      <button class="modal-close" id="adminMenuCloseBtn">Fechar</button>
+    </div><div class="admin-nav">
+  <button class="active" data-admin-tab="adminAssinaturasTab">Assinaturas</button>
+  <button data-admin-tab="adminRankingTab">Ranking por estado</button>
+</div>
+
+<div class="admin-tab-content" id="adminAssinaturasTab">
+  <div class="ranking-box">
+    <h5>Assinaturas recentes</h5>
+    <p class="empty-state">Veja abaixo a lista principal da área do admin para excluir ou revisar assinaturas.</p>
+  </div>
+</div>
+
+<div class="admin-tab-content" id="adminRankingTab">
+  <div class="insight-box">
+    <h5>Resumo rápido</h5>
+    <div class="insight-grid">
+      <div class="insight-pill">
+        <span>Estado líder</span>
+        <strong id="topEstado">—</strong>
+      </div>
+      <div class="insight-pill">
+        <span>Estados no ranking</span>
+        <strong id="totalEstados">0</strong>
+      </div>
+      <div class="insight-pill" style="grid-column: 1 / -1;">
+        <span>Total de assinaturas</span>
+        <strong id="totalAssinaturasAdmin">0</strong>
+      </div>
+    </div>
+  </div>
+  <div class="ranking-box">
+    <h5>Top estados</h5>
+    <div id="rankingLista"></div>
+  </div>
+  <div class="chart-box">
+    <h5>Gráfico de barras</h5>
+    <div id="rankingGrafico"></div>
+  </div>
+</div>
+
+  </aside>  <div class="modal-overlay" id="adminLoginModal" onclick="if(event.target === this) fecharModal('adminLoginModal')">
     <div class="modal-box" style="max-width:480px;">
       <div class="modal-top">
         <h3>Login do admin</h3>
@@ -924,8 +1241,7 @@
         <h3>Sobre</h3>
         <button class="modal-close" onclick="fecharModal('sobreModal')">Fechar</button>
       </div>
-      <p>Este abaixo-assinado foi criado por fãs para demonstrar, de forma organizada, o interesse do público brasileiro por novas datas da BTS WORLD TOUR 'ARIRANG' no Brasil. O nome da turnê aparece nas páginas oficiais da BIGHIT e da Weverse. ([ibighit.com](https://ibighit.com/en/bts/tour/?utm_source=chatgpt.com))</p>
-      <p>As páginas oficiais da turnê já listam datas na América Latina, incluindo apresentações em São Paulo em outubro de 2026, o que reforça o contexto real da mobilização por mais oportunidades de acesso para fãs no país. ([btsworldtourofficial.com](https://btsworldtourofficial.com/?utm_source=chatgpt.com))</p>
+      <p>Este abaixo-assinado foi criado por fãs para demonstrar, de forma organizada, o interesse do público brasileiro por novas datas da BTS WORLD TOUR 'ARIRANG' no Brasil.</p>
       <p>A proposta do site é reunir apoio público, fortalecer a campanha e facilitar a divulgação em rede, especialmente entre fãs que desejam demonstrar demanda por novas datas de forma visível e organizada.</p>
     </div>
   </div>  <div class="modal-overlay" id="privacidadeModal" onclick="if(event.target === this) fecharModal('privacidadeModal')">
@@ -934,15 +1250,14 @@
         <h3>Política de Privacidade</h3>
         <button class="modal-close" onclick="fecharModal('privacidadeModal')">Fechar</button>
       </div>
-      <p>A Lei Geral de Proteção de Dados Pessoais, a LGPD, protege direitos de liberdade e privacidade no tratamento de dados em meios digitais e físicos. ([gov.br](https://www.gov.br/esporte/pt-br/acesso-a-informacao/lgpd?utm_source=chatgpt.com))</p>
       <p>Neste projeto, os dados informados no formulário se limitam a nome completo, estado e cidade, usados para registro da assinatura, contagem da mobilização e administração técnica do abaixo-assinado.</p>
       <ul>
         <li>Os dados podem ser armazenados em base digital para registrar a assinatura e organizar a campanha.</li>
         <li>O site utiliza recursos do navegador para reduzir assinaturas repetidas no mesmo dispositivo ou navegador.</li>
-        <li>Serviços técnicos de terceiros, como hospedagem e infraestrutura do Firebase, podem tratar dados estritamente para funcionamento do site.</li>
+        <li>Serviços técnicos de terceiros podem tratar dados estritamente para funcionamento do site.</li>
         <li>O projeto não tem como finalidade vender cadastro de apoiadores.</li>
       </ul>
-      <p>Embora o projeto adote medidas técnicas razoáveis para proteção, nenhuma operação online pode ser considerada absolutamente livre de risco. Ao assinar, você declara ciência dessas condições e concorda com o tratamento dos dados dentro da finalidade da campanha.</p>
+      <p>Ao assinar, você declara ciência dessas condições e concorda com o tratamento dos dados dentro da finalidade da campanha.</p>
     </div>
   </div>  <div class="modal-overlay" id="termosModal" onclick="if(event.target === this) fecharModal('termosModal')">
     <div class="modal-box">
@@ -957,7 +1272,6 @@
         <li>Assinaturas duplicadas, ofensivas, falsas ou incompatíveis com a proposta da campanha podem ser removidas pela administração.</li>
         <li>O funcionamento técnico, o visual e as regras do projeto podem ser atualizados para melhoria de experiência, segurança e organização.</li>
       </ul>
-      <p>Este site representa uma mobilização pública de fãs. No Brasil, petições online podem ter força social e política, mas não equivalem automaticamente ao modelo formal de iniciativa legislativa popular nem substituem assinaturas eletrônicas validadas em sistemas oficiais. O Senado mantém canais próprios de participação, como o e-Cidadania, e o gov.br informa que assinaturas eletrônicas possuem validade legal em contextos específicos. ([www12.senado.leg.br](https://www12.senado.leg.br/ecidadania?utm_source=chatgpt.com))</p>
     </div>
   </div>  <div class="modal-overlay" id="transparenciaModal" onclick="if(event.target === this) fecharModal('transparenciaModal')">
     <div class="modal-box">
