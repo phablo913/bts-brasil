@@ -4,7 +4,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BTS no Brasil 💜</title>  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, serverTimestamp, query, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, serverTimestamp, query, onSnapshot, orderBy, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAorOEChpWGRIXU2cP7f9TmqHbep7H660Y",
@@ -53,6 +53,33 @@
       }
     };
 
+    window.fecharAdmin = function () {
+      document.getElementById("adminPanel").style.display = "none";
+      document.getElementById("adminBtn").style.display = "block";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    window.excluirAssinatura = async function (id, nome) {
+      const confirmar = confirm(`Deseja remover a assinatura de ${nome}?`);
+      if (!confirmar) return;
+      await deleteDoc(doc(db, "assinaturas", id));
+      alert("Assinatura removida com sucesso.");
+    };
+
+    window.compartilhar = function () {
+      const url = window.location.href;
+      if (navigator.share) {
+        navigator.share({
+          title: "BTS no Brasil 💜",
+          text: "Assine a campanha para trazer o BTS ao Brasil!",
+          url
+        });
+      } else {
+        navigator.clipboard.writeText(url);
+        alert("Link copiado!");
+      }
+    };
+
     window.onload = () => {
       const contadorEl = document.getElementById("contador");
       const progressoEl = document.getElementById("progresso");
@@ -68,24 +95,32 @@
         progressoEl.style.width = porcentagem + "%";
 
         adminListaEl.innerHTML = "";
-        snapshot.docs.forEach((doc, index) => {
-          const d = doc.data();
+        snapshot.docs.forEach((registro, index) => {
+          const d = registro.data();
           const item = document.createElement("div");
           item.className = "admin-item";
-          item.innerHTML = `<span>#${index + 1}</span><strong>${d.nome || "Sem nome"}</strong><small>${d.cidade || "Sem cidade"}</small>`;
+
+          const nomeSeguro = (d.nome || "Sem nome").replace(/'/g, "\\'");
+
+          item.innerHTML = `
+            <span>#${index + 1}</span>
+            <div class="admin-info">
+              <strong>${d.nome || "Sem nome"}</strong>
+              <small>${d.cidade || "Sem cidade"}</small>
+            </div>
+            <button class="delete-btn" onclick="excluirAssinatura('${registro.id}', '${nomeSeguro}')">Excluir</button>
+          `;
           adminListaEl.appendChild(item);
         });
       });
     };
   </script>  <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: 'Segoe UI', sans-serif;
+      font-family: Arial, sans-serif;
       color: white;
       overflow-x: hidden;
       background: linear-gradient(135deg, #240035 0%, #4b0082 45%, #8A2BE2 100%);
@@ -107,42 +142,22 @@
       opacity: 0.35;
       animation: float 18s infinite ease-in-out;
       background: radial-gradient(circle, rgba(255,255,255,0.55), rgba(255,255,255,0.08));
+      will-change: transform;
     }
 
-    .blob1 {
-      width: 280px;
-      height: 280px;
-      top: 5%;
-      left: -5%;
-      animation-delay: 0s;
-    }
-
-    .blob2 {
-      width: 220px;
-      height: 220px;
-      top: 55%;
-      right: -5%;
-      animation-delay: 3s;
-    }
-
-    .blob3 {
-      width: 180px;
-      height: 180px;
-      bottom: 8%;
-      left: 10%;
-      animation-delay: 6s;
-    }
-
-    .blob4 {
-      width: 240px;
-      height: 240px;
-      top: 20%;
-      right: 20%;
-      animation-delay: 9s;
-    }
+    .blob1 { width: 280px; height: 280px; top: 5%; left: -5%; animation-delay: 0s; animation-duration: 16s; }
+    .blob2 { width: 220px; height: 220px; top: 55%; right: -5%; animation-delay: 3s; animation-duration: 20s; }
+    .blob3 { width: 180px; height: 180px; bottom: 8%; left: 10%; animation-delay: 6s; animation-duration: 22s; }
+    .blob4 { width: 240px; height: 240px; top: 20%; right: 20%; animation-delay: 9s; animation-duration: 19s; }
 
     @keyframes float {
-      0%, 100% { transform: translateY(0) translateX(0) scale(1); }
+      0% { transform: translate3d(0, 0, 0) scale(1); }
+      20% { transform: translate3d(35px, -28px, 0) scale(1.08); }
+      40% { transform: translate3d(-24px, 30px, 0) scale(0.94); }
+      60% { transform: translate3d(28px, 18px, 0) scale(1.04); }
+      80% { transform: translate3d(-30px, -22px, 0) scale(0.98); }
+      100% { transform: translate3d(0, 0, 0) scale(1); }
+    }
       25% { transform: translateY(-20px) translateX(20px) scale(1.08); }
       50% { transform: translateY(25px) translateX(-10px) scale(0.96); }
       75% { transform: translateY(-10px) translateX(-25px) scale(1.04); }
@@ -167,8 +182,7 @@
       align-items: start;
     }
 
-    .card,
-    .admin-panel {
+    .card, .admin-panel {
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.15);
       backdrop-filter: blur(18px);
@@ -177,9 +191,7 @@
       border-radius: 28px;
     }
 
-    .card {
-      padding: 30px 24px;
-    }
+    .card { padding: 30px 24px; }
 
     .badge {
       display: inline-block;
@@ -228,9 +240,7 @@
       margin-bottom: 6px;
     }
 
-    .stat-box strong {
-      font-size: 22px;
-    }
+    .stat-box strong { font-size: 22px; }
 
     .barra {
       width: 100%;
@@ -280,9 +290,7 @@
       font-size: 15px;
     }
 
-    input::placeholder {
-      color: #735c8a;
-    }
+    input::placeholder { color: #735c8a; }
 
     .actions {
       display: flex;
@@ -319,6 +327,18 @@
       border: 1px solid rgba(255,255,255,0.14);
     }
 
+    .telegram-btn {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 13px 18px;
+      border-radius: 16px;
+      background: #0088cc;
+      color: white;
+      text-decoration: none;
+      font-weight: 700;
+      width: 100%;
+    }
+
     .admin-panel {
       display: none;
       padding: 22px;
@@ -339,6 +359,16 @@
       font-size: 22px;
     }
 
+    .admin-close {
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.14);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.14);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
     .admin-note {
       font-size: 12px;
       color: rgba(255,255,255,0.75);
@@ -354,8 +384,8 @@
 
     .admin-item {
       display: grid;
-      grid-template-columns: 52px 1fr;
-      gap: 4px 12px;
+      grid-template-columns: 52px 1fr auto;
+      gap: 8px 12px;
       align-items: center;
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.1);
@@ -377,15 +407,19 @@
       font-weight: 700;
     }
 
-    .admin-item strong {
-      display: block;
-      font-size: 15px;
-    }
+    .admin-info { min-width: 0; }
+    .admin-item strong { display: block; font-size: 15px; }
+    .admin-item small { display: block; font-size: 13px; color: rgba(255,255,255,0.8); }
 
-    .admin-item small {
-      display: block;
-      font-size: 13px;
-      color: rgba(255,255,255,0.8);
+    .delete-btn {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255, 84, 123, 0.18);
+      color: white;
+      border: 1px solid rgba(255, 114, 147, 0.28);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
     }
 
     .admin-trigger {
@@ -404,37 +438,31 @@
       backdrop-filter: blur(10px);
     }
 
+    .footer-links {
+      margin-top: 18px;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .footer-links a {
+      color: white;
+      text-decoration: none;
+      margin: 0 6px;
+    }
+
     @media (max-width: 900px) {
-      .layout {
-        grid-template-columns: 1fr;
-      }
-
-      .admin-panel {
-        max-height: none;
-      }
-
-      .admin-lista {
-        max-height: 340px;
-      }
+      .layout { grid-template-columns: 1fr; }
+      .admin-panel { max-height: none; }
+      .admin-lista { max-height: 340px; }
     }
 
     @media (max-width: 520px) {
-      .card {
-        padding: 24px 18px;
-      }
-
-      h1 {
-        font-size: 31px;
-      }
-
-      .actions {
-        flex-direction: column;
-      }
-
-      .primary-btn,
-      .secondary-btn {
-        width: 100%;
-      }
+      .card { padding: 24px 18px; }
+      h1 { font-size: 31px; }
+      .actions { flex-direction: column; }
+      .primary-btn, .secondary-btn { width: 100%; }
+      .admin-item { grid-template-columns: 44px 1fr; }
+      .delete-btn { grid-column: 1 / -1; width: 100%; }
     }
   </style></head>
 <body>
@@ -473,16 +501,25 @@
 
       <div class="actions">
         <button class="primary-btn" onclick="assinar()">Assinar agora</button>
-        <button class="secondary-btn" onclick="navigator.share ? navigator.share({ title: 'BTS no Brasil', text: 'Assine a campanha 💜', url: window.location.href }) : navigator.clipboard.writeText(window.location.href).then(() => alert('Link copiado!'))">Compartilhar</button>
+        <button class="secondary-btn" onclick="compartilhar()">Compartilhar</button>
       </div>
+
+      <a class="telegram-btn" href="https://t.me/SEU_GRUPO" target="_blank">📲 Entrar no Grupo do Telegram</a>
+    </div>
+
+    <div class="footer-links">
+      <a href="#">Sobre</a> |
+      <a href="#">Privacidade</a> |
+      <a href="#">Termos</a>
     </div>
   </div>
 
   <div class="admin-panel" id="adminPanel">
     <div class="admin-top">
       <h2>Área do admin</h2>
+      <button class="admin-close" onclick="fecharAdmin()">Sair do admin</button>
     </div>
-    <div class="admin-note">Aqui aparecem as assinaturas registradas. Do jeito que está hoje, isso fica escondido por senha no site, mas ainda não é proteção real.</div>
+    <div class="admin-note">Aqui aparecem as assinaturas registradas e agora você pode excluir uma por uma.</div>
     <div class="admin-lista" id="adminLista"></div>
   </div>
 </div>
