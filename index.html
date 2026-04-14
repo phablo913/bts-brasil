@@ -80,6 +80,14 @@
       }
     };
 
+    window.abrirModal = function (id) {
+      document.getElementById(id).style.display = "flex";
+    };
+
+    window.fecharModal = function (id) {
+      document.getElementById(id).style.display = "none";
+    };
+
     window.onload = () => {
       const contadorEl = document.getElementById("contador");
       const progressoEl = document.getElementById("progresso");
@@ -450,6 +458,60 @@
       margin: 0 6px;
     }
 
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 0, 20, 0.72);
+      z-index: 20;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+
+    .modal-box {
+      width: 100%;
+      max-width: 620px;
+      background: linear-gradient(180deg, rgba(83,20,124,0.95), rgba(54,10,94,0.95));
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+      padding: 22px 18px 18px;
+      color: white;
+      max-height: 80vh;
+      overflow: auto;
+      text-align: left;
+    }
+
+    .modal-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .modal-top h3 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .modal-close {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.14);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.14);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .modal-box p {
+      margin: 0 0 12px;
+      line-height: 1.6;
+      color: rgba(255,255,255,0.92);
+    }
+
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
       .admin-panel { max-height: none; }
@@ -504,13 +566,13 @@
         <button class="secondary-btn" onclick="compartilhar()">Compartilhar</button>
       </div>
 
-      <a class="telegram-btn" href="https://t.me/SEU_GRUPO" target="_blank">📲 Entrar no Grupo do Telegram</a>
+      <a class="telegram-btn" href="https://t.me/+VRzrh1UZEqQ3MTRh" target="_blank">📲 Entrar no Grupo do Telegram</a>
     </div>
 
     <div class="footer-links">
-      <a href="#">Sobre</a> |
-      <a href="#">Privacidade</a> |
-      <a href="#">Termos</a>
+      <a href="javascript:void(0)" onclick="abrirModal('sobreModal')">Sobre</a> |
+      <a href="javascript:void(0)" onclick="abrirModal('privacidadeModal')">Privacidade</a> |
+      <a href="javascript:void(0)" onclick="abrirModal('termosModal')">Termos</a>
     </div>
   </div>
 
@@ -526,6 +588,36 @@
 
   </div>  <div class="admin-trigger" id="adminBtn">
     <button onclick="abrirAdmin()">Admin</button>
+  </div>
+  <div class="modal-overlay" id="sobreModal" onclick="if(event.target === this) fecharModal('sobreModal')">
+    <div class="modal-box">
+      <div class="modal-top">
+        <h3>Sobre</h3>
+        <button class="modal-close" onclick="fecharModal('sobreModal')">Fechar</button>
+      </div>
+      <p>O BTS no Brasil é uma campanha criada por fãs para reunir assinaturas e demonstrar o interesse do público brasileiro em novas datas de show no país.</p>
+      <p>O objetivo do site é organizar a mobilização, fortalecer o alcance da campanha e facilitar o compartilhamento com outros fãs.</p>
+    </div>
+  </div>  <div class="modal-overlay" id="privacidadeModal" onclick="if(event.target === this) fecharModal('privacidadeModal')">
+    <div class="modal-box">
+      <div class="modal-top">
+        <h3>Política de Privacidade</h3>
+        <button class="modal-close" onclick="fecharModal('privacidadeModal')">Fechar</button>
+      </div>
+      <p>Este site pode coletar nome e cidade informados no formulário de assinatura para fins de organização da campanha.</p>
+      <p>Os dados são usados para contabilizar participações e administrar o abaixo-assinado. O site também pode usar cookies ou tecnologias do navegador para melhorar a experiência e evitar envios repetidos no mesmo dispositivo.</p>
+      <p>Ao usar este site, você concorda com esse tratamento básico das informações para funcionamento da campanha.</p>
+    </div>
+  </div>  <div class="modal-overlay" id="termosModal" onclick="if(event.target === this) fecharModal('termosModal')">
+    <div class="modal-box">
+      <div class="modal-top">
+        <h3>Termos de Uso</h3>
+        <button class="modal-close" onclick="fecharModal('termosModal')">Fechar</button>
+      </div>
+      <p>Ao utilizar este site, você concorda em participar da campanha de forma legítima, fornecendo informações verdadeiras no momento da assinatura.</p>
+      <p>Assinaturas consideradas indevidas, duplicadas, automatizadas ou fraudulentas podem ser removidas pela administração do site.</p>
+      <p>O conteúdo e a estrutura da campanha podem ser ajustados a qualquer momento para melhorar a experiência dos usuários e a organização das assinaturas.</p>
+    </div>
   </div>
 </body>
 </html>
