@@ -22,14 +22,7 @@
       onSnapshot,
       deleteDoc,
       doc,
-      query,
-      where,
-      getDocs,
-      limit,
-      getDoc,
-      setDoc,
-      runTransaction,
-      increment
+      runTransaction
     } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -139,7 +132,7 @@
       if (!container) return;
       container.innerHTML = "";
       const symbols = ["💜", "✨", "💫", "✦", "✧"];
-      for (let i = 0; i < 26; i += 1) {
+      for (let i = 0; i < 24; i += 1) {
         const el = document.createElement("div");
         el.className = "burst-item";
         el.textContent = symbols[i % symbols.length];
@@ -263,16 +256,16 @@
       document.querySelector(`[data-admin-tab="${aba}"]`)?.classList.add("active");
     }
 
-    async function atualizarEstatisticasPublicas(estado) {
+    async function atualizarEstatisticasPublicas(estado, operacao = "somar") {
       await runTransaction(db, async (transaction) => {
         const snap = await transaction.get(ESTATISTICAS_DOC);
         const atual = snap.exists() ? snap.data() : {};
         const rankingAtual = atual.rankingEstados || {};
-        const novoTotal = (atual.totalAssinaturas || 0) + 1;
-        const novoRanking = {
-          ...rankingAtual,
-          [estado]: (rankingAtual[estado] || 0) + 1
-        };
+        const totalAtual = Number(atual.totalAssinaturas || 0);
+        const estadoAtual = Number(rankingAtual[estado] || 0);
+        const novoTotal = operacao === "subtrair" ? Math.max(totalAtual - 1, 0) : totalAtual + 1;
+        const novoEstado = operacao === "subtrair" ? Math.max(estadoAtual - 1, 0) : estadoAtual + 1;
+        const novoRanking = { ...rankingAtual, [estado]: novoEstado };
         transaction.set(ESTATISTICAS_DOC, {
           totalAssinaturas: novoTotal,
           rankingEstados: novoRanking,
@@ -281,7 +274,7 @@
       });
     }
 
-    function renderizarRankingEstadosPublico(rankingEstados = {}, totalAssinaturas = 0) {
+    function renderizarRanking(rankingEstados = {}, totalAssinaturas = 0) {
       const rankingLista = document.getElementById("rankingLista");
       const rankingGrafico = document.getElementById("rankingGrafico");
       const topEstado = document.getElementById("topEstado");
@@ -326,12 +319,6 @@
       });
     }
 
-    async function assinaturaExistentePorDispositivo(fingerprintHash) {
-      const q = query(collection(db, "assinaturas_privadas"), where("fingerprintHash", "==", fingerprintHash), limit(1));
-      const snapshot = await getDocs(q);
-      return !snapshot.empty;
-    }
-
     async function assinar() {
       const nome = document.getElementById("nome")?.value.trim().replace(/\s+/g, " ") || "";
       const estado = document.getElementById("estado")?.value || "";
@@ -343,7 +330,7 @@
       if (!estado || !cidade) return mostrarMensagemErro("Preencha estado e cidade.");
       if (!cidadesDoEstado.includes(cidade)) return mostrarMensagemErro("Selecione uma cidade válida da lista do estado escolhido.");
       if (!consentimento) return mostrarMensagemErro("Confirme o consentimento para concluir a assinatura.");
-      if (localStorage.getItem("assinaturaRegistrada") === "true") return mostrarMensagemErro("Este dispositivo já possui uma assinatura registrada.");
+      if (localStorage.getItem("assinaturaRegistrada") === "true") return mostrarMensagemErro("Este dispositivo já possui uma assinatura registrada neste navegador.");
 
       if (submitBtn) {
         submitBtn.disabled = true;
@@ -352,12 +339,6 @@
 
       try {
         const fingerprintHash = await gerarFingerprint();
-        const jaExiste = await assinaturaExistentePorDispositivo(fingerprintHash);
-        if (jaExiste || localStorage.getItem("assinaturaRegistrada") === "true") {
-          localStorage.setItem("assinaturaRegistrada", "true");
-          return mostrarMensagemErro("Este dispositivo já possui uma assinatura registrada.");
-        }
-
         await addDoc(collection(db, "assinaturas_privadas"), {
           nome,
           estado,
@@ -368,9 +349,9 @@
           origem: "site"
         });
 
-        await atualizarEstatisticasPublicas(estado);
-
+        await atualizarEstatisticasPublicas(estado, "somar");
         localStorage.setItem("assinaturaRegistrada", "true");
+
         document.getElementById("nome").value = "";
         document.getElementById("estado").value = "";
         document.getElementById("cidade").value = "";
@@ -407,17 +388,7 @@
         prompt("Copie o link abaixo:", url);
       } catch (error) {
         console.error(error);
-        try {
-          if (navigator.clipboard?.writeText) {
-            await navigator.clipboard.writeText(url);
-            mostrarToast("🔗 Link copiado!", "success");
-          } else {
-            prompt("Copie o link abaixo:", url);
-          }
-        } catch (fallbackError) {
-          console.error(fallbackError);
-          prompt("Copie o link abaixo:", url);
-        }
+        prompt("Copie o link abaixo:", url);
       }
     }
 
@@ -457,19 +428,7 @@
       if (!confirmar) return;
       try {
         await deleteDoc(doc(db, "assinaturas_privadas", id));
-        await runTransaction(db, async (transaction) => {
-          const snap = await transaction.get(ESTATISTICAS_DOC);
-          const atual = snap.exists() ? snap.data() : {};
-          const rankingAtual = atual.rankingEstados || {};
-          const totalAtual = atual.totalAssinaturas || 0;
-          const estadoAtual = rankingAtual[estado] || 0;
-          const novoRanking = { ...rankingAtual, [estado]: Math.max(estadoAtual - 1, 0) };
-          transaction.set(ESTATISTICAS_DOC, {
-            totalAssinaturas: Math.max(totalAtual - 1, 0),
-            rankingEstados: novoRanking,
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
-        });
+        await atualizarEstatisticasPublicas(estado, "subtrair");
         mostrarToast("🗑️ Assinatura removida.", "success");
       } catch (error) {
         console.error(error);
@@ -531,7 +490,7 @@
         const total = Number(dados.totalAssinaturas || 0);
         contadorEl.textContent = total.toLocaleString("pt-BR");
         progressoEl.style.width = `${Math.min((total / META) * 100, 100)}%`;
-        renderizarRankingEstadosPublico(dados.rankingEstados || {}, total);
+        renderizarRanking(dados.rankingEstados || {}, total);
       }, (error) => console.error(error));
     }
 
@@ -641,437 +600,228 @@
     .symbol3 { bottom: 12%; left: 13%; animation-delay: 1.8s; }
     .symbol4 { bottom: 20%; right: 9%; animation-delay: 2.7s; }
     .symbol5 { top: 42%; left: 49%; animation-delay: 3.6s; }
-    .page {
-      position: relative;
-      z-index: 1;
-      min-height: 100vh;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding: 12px 16px 22px;
-    }
-    .layout {
-      width: 100%;
-      max-width: 1120px;
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 16px;
-      align-items: start;
-    }
-    .card, .admin-panel {
-      background: var(--glass);
-      border: 1px solid var(--glass-border);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      border-radius: 28px;
-      box-shadow: var(--shadow);
-    }
+    .page { position: relative; z-index: 1; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 12px 16px 22px; }
+    .layout { width: 100%; max-width: 1120px; display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
+    .card, .admin-panel { background: var(--glass); border: 1px solid var(--glass-border); backdrop-filter: blur(18px); border-radius: 28px; box-shadow: var(--shadow); }
     .card { padding: 22px 22px 20px; }
-    .eyebrow {
-      display: inline-block;
-      padding: 8px 14px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.14);
-      font-size: 12px;
-      letter-spacing: .4px;
-      margin-bottom: 12px;
-    }
+    .eyebrow { display: inline-block; padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,.14); font-size: 12px; letter-spacing: .4px; margin-bottom: 12px; }
     h1 { margin: 0 0 8px; font-size: clamp(30px, 4vw, 42px); line-height: 1.02; }
     .sub { margin: 0 0 18px; color: var(--text-soft); font-size: 15px; line-height: 1.52; max-width: 760px; }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(150px, 1fr));
-      gap: 12px;
-      margin-bottom: 16px;
-    }
-    .stat-box {
-      background: rgba(255,255,255,.08);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 18px;
-      padding: 15px;
-    }
+    .stats { display: grid; grid-template-columns: repeat(2, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .stat-box { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 18px; padding: 15px; }
     .stat-box span { display: block; font-size: 12px; opacity: .82; margin-bottom: 6px; }
     .stat-box strong { font-size: 24px; display: block; }
-    .barra {
-      height: 12px;
-      background: rgba(255,255,255,.16);
-      border-radius: 999px;
-      overflow: hidden;
-      margin: 10px 0;
-    }
-    .progresso {
-      height: 100%;
-      width: 0%;
-      transition: width .6s ease;
-      background: linear-gradient(90deg, rgba(255,255,255,.95), rgba(255,223,255,.95));
-      box-shadow: 0 0 18px rgba(255,255,255,.62);
-    }
+    .barra { height: 12px; background: rgba(255,255,255,.16); border-radius: 999px; overflow: hidden; margin: 10px 0; }
+    .progresso { height: 100%; width: 0%; transition: width .6s ease; background: linear-gradient(90deg, rgba(255,255,255,.95), rgba(255,223,255,.95)); box-shadow: 0 0 18px rgba(255,255,255,.62); }
     .meta-text { font-size: 13px; color: var(--text-soft); margin-bottom: 18px; }
-    .form-wrap {
-      background: rgba(255,255,255,.08);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 22px;
-      padding: 18px;
-      position: relative;
-      overflow: visible;
-    }
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1.1fr .7fr 1fr;
-      gap: 12px;
-    }
+    .form-wrap { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 22px; padding: 18px; position: relative; overflow: visible; }
+    .form-grid { display: grid; grid-template-columns: 1.1fr .7fr 1fr; gap: 12px; }
     .field { display: flex; flex-direction: column; gap: 8px; }
     .field label { font-size: 13px; opacity: .9; }
-    input, select {
-      width: 100%;
-      padding: 14px 15px;
-      border-radius: 16px;
-      border: 1px solid rgba(255,255,255,.16);
-      background: rgba(255,255,255,.94);
-      color: #2d1740;
-      font-size: 15px;
-      outline: none;
-    }
+    input, select { width: 100%; padding: 14px 15px; border-radius: 16px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.94); color: #2d1740; font-size: 15px; outline: none; }
     select { appearance: auto; -webkit-appearance: menulist; -moz-appearance: menulist; cursor: pointer; }
     .hint { font-size: 12px; color: rgba(255,255,255,.78); margin-top: 10px; line-height: 1.5; }
     .cidade-search-wrap { position: relative; }
-    .cidade-sugestoes {
-      display: none;
-      position: absolute;
-      top: calc(100% + 8px);
-      left: 0;
-      right: 0;
-      max-height: 320px;
-      overflow: auto;
-      background: rgba(58,18,88,.98);
-      border: 1px solid rgba(255,255,255,.14);
-      border-radius: 16px;
-      box-shadow: 0 18px 36px rgba(0,0,0,.25);
-      z-index: 8;
-      padding: 6px;
-      backdrop-filter: blur(14px);
-    }
-    .cidade-opcao {
-      width: 100%;
-      text-align: left;
-      background: transparent;
-      color: white;
-      border: none;
-      border-radius: 12px;
-      padding: 11px 12px;
-      font-size: 14px;
-      font-weight: 500;
-    }
+    .cidade-sugestoes { display: none; position: absolute; top: calc(100% + 8px); left: 0; right: 0; max-height: 320px; overflow: auto; background: rgba(58,18,88,.98); border: 1px solid rgba(255,255,255,.14); border-radius: 16px; box-shadow: 0 18px 36px rgba(0,0,0,.25); z-index: 8; padding: 6px; }
+    .cidade-opcao { width: 100%; text-align: left; background: transparent; color: white; border: none; border-radius: 12px; padding: 11px 12px; font-size: 14px; font-weight: 500; }
     .cidade-opcao:hover { background: rgba(255,255,255,.1); }
     .cidade-vazia { padding: 12px; font-size: 13px; color: rgba(255,255,255,.8); }
-    .consent {
-      margin-top: 14px;
-      display: flex;
-      gap: 10px;
-      align-items: flex-start;
-      text-align: left;
-      font-size: 13px;
-      color: rgba(255,255,255,.88);
-      line-height: 1.5;
-    }
-    .consent input {
-      width: 18px;
-      height: 18px;
-      margin-top: 1px;
-      padding: 0;
-      accent-color: #c86fff;
-    }
+    .consent { margin-top: 14px; display: flex; gap: 10px; align-items: flex-start; text-align: left; font-size: 13px; color: rgba(255,255,255,.88); line-height: 1.5; }
+    .consent input { width: 18px; height: 18px; margin-top: 1px; padding: 0; accent-color: #c86fff; }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
-    button {
-      border: none;
-      border-radius: 16px;
-      padding: 14px 18px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .primary-btn {
-      flex: 1;
-      min-width: 180px;
-      background: linear-gradient(90deg, #c66bff, #f0a8ff);
-      color: white;
-      box-shadow: 0 10px 26px rgba(209,110,255,.3);
-    }
-    .secondary-btn {
-      background: rgba(255,255,255,.14);
-      color: white;
-      border: 1px solid rgba(255,255,255,.14);
-    }
-    .telegram-btn {
-      display: inline-flex;
-      justify-content: center;
-      align-items: center;
-      width: 100%;
-      text-decoration: none;
-      margin-top: 14px;
-      padding: 13px 18px;
-      border-radius: 16px;
-      background: #0088cc;
-      color: white;
-      font-weight: 700;
-    }
+    button { border: none; border-radius: 16px; padding: 14px 18px; font-weight: 700; cursor: pointer; }
+    .primary-btn { flex: 1; min-width: 180px; background: linear-gradient(90deg, #c66bff, #f0a8ff); color: white; box-shadow: 0 10px 26px rgba(209,110,255,.3); }
+    .secondary-btn { background: rgba(255,255,255,.14); color: white; border: 1px solid rgba(255,255,255,.14); }
+    .telegram-btn { display: inline-flex; justify-content: center; align-items: center; width: 100%; text-decoration: none; margin-top: 14px; padding: 13px 18px; border-radius: 16px; background: #0088cc; color: white; font-weight: 700; }
     .footer-links { margin-top: 18px; font-size: 12px; opacity: .92; }
     .footer-links a { color: white; text-decoration: none; margin: 0 6px; }
     .bottom-note { margin-top: 16px; font-size: 12px; color: rgba(255,255,255,.72); line-height: 1.5; }
-    .admin-panel {
-      display: none;
-      padding: 22px;
-      margin-top: 12px;
-      max-height: 75vh;
-      overflow: hidden;
-      position: relative;
-    }
-    .admin-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
-      margin-bottom: 14px;
-    }
-    .admin-actions { display: flex; gap: 10px; align-items: center; }
-    .icon-btn {
-      width: 46px;
-      height: 46px;
-      border-radius: 14px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(255,255,255,.12);
-      border: 1px solid rgba(255,255,255,.14);
-      color: white;
-      font-size: 22px;
-      padding: 0;
-    }
-    .admin-note { font-size: 12px; color: rgba(255,255,255,.78); line-height: 1.5; margin-bottom: 12px; }
-    .admin-lista { max-height: calc(75vh - 110px); overflow: auto; padding-right: 4px; }
-    .admin-item {
+    .adsense-section {
       display: grid;
-      grid-template-columns: 52px 1fr auto;
-      gap: 8px 12px;
-      align-items: center;
-      background: rgba(255,255,255,.08);
-      border: 1px solid rgba(255,255,255,.1);
-      border-radius: 18px;
-      padding: 12px 14px;
-      margin-bottom: 10px;
+      gap: 16px;
+      margin-top: 4px;
     }
-    .admin-item span {
-      grid-row: span 2;
-      width: 42px;
-      height: 42px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-      background: rgba(255,255,255,.14);
-      font-size: 12px;
-      font-weight: 700;
-    }
-    .admin-info strong { display: block; font-size: 15px; }
-    .admin-info small { display: block; font-size: 13px; color: rgba(255,255,255,.8); }
-    .delete-btn {
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: rgba(255,84,123,.18);
-      color: white;
-      border: 1px solid rgba(255,114,147,.28);
-      font-size: 12px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-    .admin-trigger { position: fixed; right: 14px; bottom: 14px; z-index: 4; }
-    .admin-trigger button {
-      border-radius: 999px;
-      background: rgba(255,255,255,.14);
-      color: white;
-      border: 1px solid rgba(255,255,255,.15);
-      backdrop-filter: blur(10px);
-    }
-    .admin-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(8,0,20,.44);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity .25s ease;
-      z-index: 25;
-    }
-    .admin-backdrop.show { opacity: 1; pointer-events: auto; }
-    .admin-menu-panel {
-      position: fixed;
-      top: 0;
-      right: -430px;
-      width: min(430px, 92vw);
-      height: 100vh;
-      background: linear-gradient(180deg, rgba(60,10,95,.98), rgba(39,7,65,.98));
-      border-left: 1px solid rgba(255,255,255,.12);
-      box-shadow: -18px 0 40px rgba(0,0,0,.32);
-      z-index: 26;
-      transition: right .28s ease;
-      padding: 18px;
-      overflow: auto;
-      backdrop-filter: blur(18px);
-    }
-    .admin-menu-panel.open { right: 0; }
-    .admin-menu-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-    .admin-nav {
+    .adsense-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 16px;
+      gap: 16px;
     }
-    .admin-nav button {
+    .adsense-card {
       background: rgba(255,255,255,.08);
-      color: white;
-      border: 1px solid rgba(255,255,255,.1);
-      padding: 12px 10px;
-      border-radius: 14px;
-      font-size: 13px;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 24px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
     }
-    .admin-nav button.active {
-      background: linear-gradient(90deg, #c66bff, #f0a8ff);
-      border-color: transparent;
+    .adsense-card h2,
+    .adsense-card h3 {
+      margin: 0 0 10px;
     }
-    .admin-tab-content { display: none; }
-    .ranking-box, .chart-box, .insight-box {
+    .adsense-card h2 { font-size: 24px; }
+    .adsense-card h3 { font-size: 18px; }
+    .adsense-card p {
+      margin: 0;
+      color: rgba(255,255,255,.9);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+    .adsense-card p + p { margin-top: 12px; }
+    .faq-item + .faq-item {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,.1);
+    }
+    .adsense-cta {
+      background: linear-gradient(135deg, rgba(198,107,255,.22), rgba(255,255,255,.08));
+    }
+    .content-section {
+      display: grid;
+      gap: 16px;
+      margin-top: 4px;
+    }
+    .content-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .content-card {
       background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 24px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .content-card h2,
+    .content-card h3 {
+      margin: 0 0 10px;
+    }
+    .content-card h2 {
+      font-size: 24px;
+    }
+    .content-card h3 {
+      font-size: 18px;
+    }
+    .content-card p {
+      margin: 0;
+      color: rgba(255,255,255,.9);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+    .content-card p + p {
+      margin-top: 12px;
+    }
+    .faq-section {
+      display: block;
+    }
+    .faq-item + .faq-item {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,.1);
+    }
+    .info-banner {
+      background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(255,255,255,.06));
+    }
+    .cta-card {
+      background: linear-gradient(135deg, rgba(198,107,255,.22), rgba(255,255,255,.08));
+    }
+    .content-section {
+      margin-top: 18px;
+      padding: 18px;
+      border-radius: 22px;
+      background: rgba(255,255,255,.07);
       border: 1px solid rgba(255,255,255,.1);
-      border-radius: 18px;
+    }
+    .content-section h2 {
+      margin: 0 0 10px;
+      font-size: 21px;
+    }
+    .content-section p {
+      margin: 0 0 10px;
+      color: rgba(255,255,255,.9);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+    .content-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .content-card, .faq-item {
       padding: 14px;
-      margin-bottom: 12px;
-    }
-    .insight-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .insight-pill {
-      padding: 12px;
-      border-radius: 16px;
+      border-radius: 18px;
       background: rgba(255,255,255,.06);
       border: 1px solid rgba(255,255,255,.08);
     }
+    .content-card strong, .faq-item strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 15px;
+    }
+    .content-card p, .faq-item p {
+      margin: 0;
+      font-size: 14px;
+      color: rgba(255,255,255,.86);
+    }
+    .faq-section {
+      margin-bottom: 8px;
+    }
+    .admin-panel { display: none; padding: 22px; margin-top: 12px; max-height: 75vh; overflow: hidden; position: relative; }
+    .admin-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 14px; }
+    .admin-actions { display: flex; gap: 10px; align-items: center; }
+    .icon-btn { width: 46px; height: 46px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.14); color: white; font-size: 22px; padding: 0; }
+    .admin-note { font-size: 12px; color: rgba(255,255,255,.78); line-height: 1.5; margin-bottom: 12px; }
+    .admin-lista { max-height: calc(75vh - 110px); overflow: auto; padding-right: 4px; }
+    .admin-item { display: grid; grid-template-columns: 52px 1fr auto; gap: 8px 12px; align-items: center; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; padding: 12px 14px; margin-bottom: 10px; }
+    .admin-item span { grid-row: span 2; width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(255,255,255,.14); font-size: 12px; font-weight: 700; }
+    .admin-info strong { display: block; font-size: 15px; }
+    .admin-info small { display: block; font-size: 13px; color: rgba(255,255,255,.8); }
+    .delete-btn { padding: 10px 12px; border-radius: 12px; background: rgba(255,84,123,.18); color: white; border: 1px solid rgba(255,114,147,.28); font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .admin-trigger { position: fixed; right: 14px; bottom: 14px; z-index: 4; }
+    .admin-trigger button { border-radius: 999px; background: rgba(255,255,255,.14); color: white; border: 1px solid rgba(255,255,255,.15); }
+    .admin-backdrop { position: fixed; inset: 0; background: rgba(8,0,20,.44); opacity: 0; pointer-events: none; transition: opacity .25s ease; z-index: 25; }
+    .admin-backdrop.show { opacity: 1; pointer-events: auto; }
+    .admin-menu-panel { position: fixed; top: 0; right: -430px; width: min(430px, 92vw); height: 100vh; background: linear-gradient(180deg, rgba(60,10,95,.98), rgba(39,7,65,.98)); border-left: 1px solid rgba(255,255,255,.12); box-shadow: -18px 0 40px rgba(0,0,0,.32); z-index: 26; transition: right .28s ease; padding: 18px; overflow: auto; }
+    .admin-menu-panel.open { right: 0; }
+    .admin-menu-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .admin-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .admin-nav button { background: rgba(255,255,255,.08); color: white; border: 1px solid rgba(255,255,255,.1); padding: 12px 10px; border-radius: 14px; font-size: 13px; }
+    .admin-nav button.active { background: linear-gradient(90deg, #c66bff, #f0a8ff); border-color: transparent; }
+    .admin-tab-content { display: none; }
+    .ranking-box, .chart-box, .insight-box { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; padding: 14px; margin-bottom: 12px; }
+    .insight-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .insight-pill { padding: 12px; border-radius: 16px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); }
     .insight-pill span { display: block; font-size: 12px; color: rgba(255,255,255,.76); margin-bottom: 6px; }
     .insight-pill strong { display: block; font-size: 18px; }
-    .ranking-item {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: 14px;
-      background: rgba(255,255,255,.06);
-      margin-bottom: 8px;
-      align-items: center;
-    }
-    .chart-row {
-      display: grid;
-      grid-template-columns: 48px 1fr 44px;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-    .chart-bar-wrap {
-      height: 14px;
-      background: rgba(255,255,255,.12);
-      border-radius: 999px;
-      overflow: hidden;
-    }
-    .chart-bar {
-      height: 100%;
-      border-radius: 999px;
-      background: linear-gradient(90deg, #c66bff, #ffd0ff);
-      box-shadow: 0 0 14px rgba(226,168,255,.42);
-    }
+    .ranking-item { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 14px; background: rgba(255,255,255,.06); margin-bottom: 8px; align-items: center; }
+    .chart-row { display: grid; grid-template-columns: 48px 1fr 44px; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .chart-bar-wrap { height: 14px; background: rgba(255,255,255,.12); border-radius: 999px; overflow: hidden; }
+    .chart-bar { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #c66bff, #ffd0ff); box-shadow: 0 0 14px rgba(226,168,255,.42); }
     .empty-state { font-size: 13px; color: rgba(255,255,255,.78); line-height: 1.5; }
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(8,0,20,.74);
-      z-index: 20;
-      align-items: center;
-      justify-content: center;
-      padding: 18px;
-    }
-    .modal-box {
-      width: min(92vw, 720px);
-      background: linear-gradient(180deg, rgba(83,20,124,.98), rgba(54,10,94,.98));
-      border: 1px solid rgba(255,255,255,.14);
-      border-radius: 24px;
-      box-shadow: 0 20px 60px rgba(0,0,0,.35);
-      padding: 22px 18px 18px;
-      color: white;
-      max-height: 80vh;
-      overflow: auto;
-      text-align: left;
-    }
-    .modal-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-    .modal-close {
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: rgba(255,255,255,.14);
-      color: white;
-      border: 1px solid rgba(255,255,255,.14);
-      font-size: 12px;
-      font-weight: 700;
-    }
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(8,0,20,.74); z-index: 20; align-items: center; justify-content: center; padding: 18px; }
+    .modal-box { width: min(92vw, 720px); background: linear-gradient(180deg, rgba(83,20,124,.98), rgba(54,10,94,.98)); border: 1px solid rgba(255,255,255,.14); border-radius: 24px; box-shadow: 0 20px 60px rgba(0,0,0,.35); padding: 22px 18px 18px; color: white; max-height: 80vh; overflow: auto; text-align: left; }
+    .modal-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .modal-close { padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.14); color: white; border: 1px solid rgba(255,255,255,.14); font-size: 12px; font-weight: 700; }
     .modal-box p, .modal-box li { line-height: 1.7; color: rgba(255,255,255,.92); font-size: 15px; }
-    .celebration {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      overflow: hidden;
-    }
-    .burst-item {
-      position: absolute;
-      bottom: 12px;
-      opacity: 0;
-      animation: burstUp 1.8s ease forwards;
-      text-shadow: 0 0 12px rgba(255,255,255,.45);
-    }
-    @keyframes burstUp {
-      0% { transform: translateY(0) scale(.8) rotate(0deg); opacity: 0; }
-      15% { opacity: 1; }
-      100% { transform: translateY(-220px) scale(1.2) rotate(18deg); opacity: 0; }
-    }
-    .toast-popup {
-      position: fixed;
-      left: 50%;
-      bottom: 20px;
-      transform: translateX(-50%) translateY(20px);
-      color: white;
-      padding: 14px 18px;
-      border-radius: 18px;
-      font-weight: 700;
-      box-shadow: 0 10px 25px rgba(0,0,0,.25);
-      opacity: 0;
-      transition: all .35s ease;
-      z-index: 999;
-      max-width: calc(100vw - 24px);
-      width: min(560px, calc(100vw - 24px));
-      text-align: center;
-      border: 1px solid rgba(255,255,255,.16);
-      backdrop-filter: blur(12px);
-    }
+    .celebration { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    .burst-item { position: absolute; bottom: 12px; opacity: 0; animation: burstUp 1.8s ease forwards; text-shadow: 0 0 12px rgba(255,255,255,.45); }
+    @keyframes burstUp { 0% { transform: translateY(0) scale(.8) rotate(0deg); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(-220px) scale(1.2) rotate(18deg); opacity: 0; } }
+    .toast-popup { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px); color: white; padding: 14px 18px; border-radius: 18px; font-weight: 700; box-shadow: 0 10px 25px rgba(0,0,0,.25); opacity: 0; transition: all .35s ease; z-index: 999; max-width: calc(100vw - 24px); width: min(560px, calc(100vw - 24px)); text-align: center; border: 1px solid rgba(255,255,255,.16); backdrop-filter: blur(12px); }
     .toast-popup.success { background: linear-gradient(90deg,#c66bff,#f0a8ff); }
     .toast-popup.error { background: linear-gradient(90deg,#8a2be2,#5b0ea8); }
     .toast-popup.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     select:disabled, input:disabled { opacity: .8; cursor: not-allowed; }
+    @media (max-width: 840px) { .form-grid { grid-template-columns: 1fr 1fr; } .field-full { grid-column: 1 / -1; } }
     @media (max-width: 840px) {
-      .form-grid { grid-template-columns: 1fr 1fr; }
-      .field-full { grid-column: 1 / -1; }
+      .content-cards { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 920px) {
+      .content-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 840px) {
+      .adsense-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 640px) {
       .page { padding: 10px 10px 18px; }
@@ -1124,7 +874,7 @@
         </div>
       </div>
 
-      <div class="hint">Somente nomes completos são aceitos. O site também bloqueia novas assinaturas no mesmo dispositivo ou navegador.</div>
+      <div class="hint">Os nomes ficam em área privada. O site público mostra apenas contador e ranking por estado.</div>
 
       <label class="consent">
         <input type="checkbox" id="consentimento" />
@@ -1149,6 +899,149 @@
     <div class="bottom-note">Este projeto foi desenvolvido com apoio de ferramentas de inteligência artificial em sua criação e evolução.</div>
   </div>
 
+  <section class="adsense-section">
+    <div class="adsense-card">
+      <h2>Sobre a campanha</h2>
+      <p>Este abaixo-assinado foi criado por fãs brasileiros com o objetivo de demonstrar o interesse do público por novas datas da BTS WORLD TOUR 'ARIRANG' no Brasil.</p>
+      <p>A iniciativa busca reunir assinaturas reais, fortalecer a mobilização nacional e ampliar a visibilidade da demanda por shows no país.</p>
+      <p>Quanto maior o número de participantes, maior será o impacto da campanha e mais forte ficará a demonstração pública do interesse do Brasil.</p>
+    </div>
+
+    <div class="adsense-grid">
+      <div class="adsense-card">
+        <h3>Por que isso é importante?</h3>
+        <p>O Brasil possui uma das maiores bases de fãs do mundo, com forte presença digital e alto engajamento em campanhas online. Este projeto organiza essa mobilização em um único lugar.</p>
+      </div>
+      <div class="adsense-card">
+        <h3>Como participar</h3>
+        <p>Assine com nome completo, selecione seu estado e sua cidade, compartilhe o link da página e convide outros fãs para fortalecer a campanha.</p>
+      </div>
+    </div>
+
+    <div class="adsense-card">
+      <h2>Perguntas frequentes</h2>
+      <div class="faq-item">
+        <h3>É gratuito?</h3>
+        <p>Sim. A assinatura é totalmente gratuita.</p>
+      </div>
+      <div class="faq-item">
+        <h3>Quais dados são coletados?</h3>
+        <p>O formulário solicita apenas nome completo, estado e cidade.</p>
+      </div>
+      <div class="faq-item">
+        <h3>Para que serve o abaixo-assinado?</h3>
+        <p>Para demonstrar interesse real do público brasileiro e fortalecer a mobilização por novas datas da turnê no país.</p>
+      </div>
+    </div>
+
+    <div class="adsense-card adsense-cta">
+      <h2>Ajude a campanha a crescer</h2>
+      <p>Assine, compartilhe o site e convide outros fãs a participarem. Quanto maior o alcance da campanha, maior será sua força e visibilidade.</p>
+    </div>
+  </section>
+  </div>
+
+  <section class="content-section">
+    <div class="content-card">
+      <h2>Por que essa mobilização existe</h2>
+      <p>O objetivo deste projeto é demonstrar, de forma organizada e pública, o interesse dos fãs brasileiros por novas datas da BTS WORLD TOUR 'ARIRANG'. O site reúne assinaturas, fortalece o alcance da campanha e ajuda a concentrar a mobilização em um único lugar.</p>
+      <p>Além do abaixo-assinado, a página também serve como ponto oficial de compartilhamento, atualização e engajamento da comunidade, facilitando o envio do link para outros fãs e ampliando a visibilidade da demanda do Brasil.</p>
+    </div>
+
+    <div class="content-grid">
+      <div class="content-card">
+        <h3>Força do público brasileiro</h3>
+        <p>O Brasil possui uma das comunidades de fãs mais engajadas do mundo. Em campanhas digitais, mutirões, streams e mobilizações online, o público brasileiro costuma ter participação expressiva e alto poder de alcance nas redes sociais.</p>
+      </div>
+      <div class="content-card">
+        <h3>Objetivo do abaixo-assinado</h3>
+        <p>O abaixo-assinado busca mostrar volume de interesse, distribuição regional do apoio e força da mobilização nacional. Cada assinatura ajuda a reforçar que existe público ativo para novas datas no país.</p>
+      </div>
+      <div class="content-card">
+        <h3>Como participar</h3>
+        <p>Assine com nome completo, escolha seu estado e sua cidade, compartilhe o link com outros fãs e entre no grupo oficial do Telegram da campanha para acompanhar novidades, prestação de contas e ações futuras.</p>
+      </div>
+    </div>
+
+    <div class="content-card info-banner">
+      <h2>Como o site funciona</h2>
+      <p>Os dados pessoais enviados no formulário ficam em área privada para administração da campanha. A parte pública do site mostra apenas informações agregadas, como total de assinaturas e ranking por estado, preservando melhor a privacidade dos participantes.</p>
+    </div>
+
+    <div class="faq-section">
+      <div class="content-card">
+        <h2>Perguntas frequentes</h2>
+        <div class="faq-item">
+          <h3>Esse abaixo-assinado é gratuito?</h3>
+          <p>Sim. A assinatura é gratuita e aberta para quem quiser apoiar a mobilização por novas datas da turnê no Brasil.</p>
+        </div>
+        <div class="faq-item">
+          <h3>Preciso informar documentos pessoais?</h3>
+          <p>Não. O projeto foi pensado para reduzir a coleta de dados sensíveis. O formulário solicita apenas nome completo, estado e cidade.</p>
+        </div>
+        <div class="faq-item">
+          <h3>Como acompanho as atualizações?</h3>
+          <p>As principais atualizações da campanha, organização da mobilização e informações de transparência podem ser publicadas no grupo oficial do Telegram.</p>
+        </div>
+        <div class="faq-item">
+          <h3>Qual é a finalidade da monetização?</h3>
+          <p>A monetização pode ajudar na manutenção, estrutura e evolução do projeto. A política de transparência do site informa a destinação prevista dos valores e a prestação de contas pública.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="content-card cta-card">
+      <h2>Ajude a campanha a crescer</h2>
+      <p>Se você acredita no potencial dessa mobilização, assine o abaixo-assinado, compartilhe a página com outros fãs e convide mais pessoas a entrarem no grupo oficial. Quanto maior o alcance, mais forte fica a demonstração pública de interesse do Brasil.</p>
+    </div>
+
+    <section class="content-section">
+      <h2>Por que esta mobilização existe</h2>
+      <p>O objetivo deste abaixo-assinado é demonstrar, de forma organizada e pública, que existe forte demanda por novas datas da BTS WORLD TOUR 'ARIRANG' no Brasil. A campanha reúne assinaturas, fortalece o alcance digital e ajuda a mostrar o interesse real dos fãs brasileiros.</p>
+      <p>Além da assinatura, o projeto busca centralizar informações, orientar o compartilhamento responsável e reunir a comunidade em torno de uma mobilização transparente.</p>
+    </section>
+
+    <section class="content-section">
+      <h2>Como participar</h2>
+      <div class="content-cards">
+        <div class="content-card">
+          <strong>1. Assine</strong>
+          <p>Preencha nome completo, estado e cidade para registrar seu apoio à campanha.</p>
+        </div>
+        <div class="content-card">
+          <strong>2. Compartilhe</strong>
+          <p>Envie o link para amigos, grupos e redes sociais para ampliar o alcance da mobilização.</p>
+        </div>
+        <div class="content-card">
+          <strong>3. Acompanhe</strong>
+          <p>Entre no grupo oficial do Telegram para atualizações, transparência e prestação de contas.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section">
+      <h2>Compromisso com transparência</h2>
+      <p>As estatísticas públicas do site mostram o total de assinaturas e o ranking por estado. Os dados pessoais ficam em área privada, acessível apenas à administração autenticada.</p>
+      <p>Atualizações da campanha, metas e informações sobre eventual monetização serão divulgadas no canal oficial da comunidade para manter clareza sobre o projeto.</p>
+    </section>
+
+    <section class="content-section faq-section">
+      <h2>Perguntas frequentes</h2>
+      <div class="faq-item">
+        <strong>Este site vende ingressos?</strong>
+        <p>Não. Este projeto é uma mobilização de fãs e não realiza venda de ingressos, reservas ou promessas de acesso a shows.</p>
+      </div>
+      <div class="faq-item">
+        <strong>Minhas informações ficam públicas?</strong>
+        <p>Não. O público vê apenas estatísticas agregadas, como total de assinaturas e ranking por estado.</p>
+      </div>
+      <div class="faq-item">
+        <strong>Como acompanho novidades da campanha?</strong>
+        <p>As principais atualizações ficam disponíveis no grupo oficial do Telegram e nos canais usados para divulgar a mobilização.</p>
+      </div>
+    </section>
+  </div>
+
   <div class="admin-panel" id="adminPanel">
     <div class="admin-top">
       <h3>Área do admin</h3>
@@ -1157,7 +1050,7 @@
         <button class="secondary-btn" id="adminLogoutBtn">Sair do admin</button>
       </div>
     </div>
-    <div class="admin-note">O menu do admin tem acesso ao ranking por estado e à lista completa de assinaturas. Nada disso fica visível ao público.</div>
+    <div class="admin-note">O menu do admin tem acesso ao ranking por estado e à lista completa de assinaturas privadas.</div>
     <div class="admin-lista" id="adminLista"></div>
   </div>
 </div>
@@ -1202,11 +1095,11 @@
   </div>  <div class="modal-overlay" id="sobreModal" onclick="if(event.target === this) fecharModal('sobreModal')">
     <div class="modal-box"><div class="modal-top"><h3>Sobre</h3><button class="modal-close" onclick="fecharModal('sobreModal')">Fechar</button></div><p>Este abaixo-assinado foi criado por fãs para demonstrar, de forma organizada, o interesse do público brasileiro por novas datas da BTS WORLD TOUR 'ARIRANG' no Brasil.</p><p>A proposta do site é reunir apoio público, fortalecer a campanha e facilitar a divulgação em rede, especialmente entre fãs que desejam demonstrar demanda por novas datas de forma visível e organizada.</p></div>
   </div>  <div class="modal-overlay" id="privacidadeModal" onclick="if(event.target === this) fecharModal('privacidadeModal')">
-    <div class="modal-box"><div class="modal-top"><h3>Política de Privacidade</h3><button class="modal-close" onclick="fecharModal('privacidadeModal')">Fechar</button></div><p>Neste projeto, os dados informados no formulário se limitam a nome completo, estado e cidade, usados para registro da assinatura, contagem da mobilização e administração técnica do abaixo-assinado.</p><ul><li>Os dados podem ser armazenados em base digital para registrar a assinatura e organizar a campanha.</li><li>O site utiliza recursos do navegador para reduzir assinaturas repetidas no mesmo dispositivo ou navegador.</li><li>Serviços técnicos de terceiros podem tratar dados estritamente para funcionamento do site.</li><li>O projeto não tem como finalidade vender cadastro de apoiadores.</li></ul><p>Ao assinar, você declara ciência dessas condições e concorda com o tratamento dos dados dentro da finalidade da campanha.</p></div>
+    <div class="modal-box"><div class="modal-top"><h3>Política de Privacidade</h3><button class="modal-close" onclick="fecharModal('privacidadeModal')">Fechar</button></div><p>Os dados pessoais ficam em coleção privada, acessível apenas pela área administrativa autenticada. O site público exibe apenas estatísticas agregadas, como total de assinaturas e ranking por estado.</p></div>
   </div>  <div class="modal-overlay" id="termosModal" onclick="if(event.target === this) fecharModal('termosModal')">
-    <div class="modal-box"><div class="modal-top"><h3>Termos de Uso</h3><button class="modal-close" onclick="fecharModal('termosModal')">Fechar</button></div><p>Ao utilizar este site, você concorda em participar da mobilização de forma legítima, responsável e compatível com a proposta do abaixo-assinado.</p><ul><li>Somente assinaturas com nome completo são aceitas.</li><li>O uso de automações, robôs, fraude ou qualquer tentativa de inflar artificialmente o número de assinaturas é proibido.</li><li>Assinaturas duplicadas, ofensivas, falsas ou incompatíveis com a proposta da campanha podem ser removidas pela administração.</li><li>O funcionamento técnico, o visual e as regras do projeto podem ser atualizados para melhoria de experiência, segurança e organização.</li></ul></div>
+    <div class="modal-box"><div class="modal-top"><h3>Termos de Uso</h3><button class="modal-close" onclick="fecharModal('termosModal')">Fechar</button></div><p>Ao utilizar este site, você concorda em participar da mobilização de forma legítima, responsável e compatível com a proposta do abaixo-assinado.</p></div>
   </div>  <div class="modal-overlay" id="transparenciaModal" onclick="if(event.target === this) fecharModal('transparenciaModal')">
-    <div class="modal-box"><div class="modal-top"><h3>Transparência</h3><button class="modal-close" onclick="fecharModal('transparenciaModal')">Fechar</button></div><p>Este projeto poderá utilizar monetização compatível com a página, como anúncios e outras formas de apoio digital, para sustentar sua continuidade e ampliar seu alcance.</p><p>A proposta atual é destinar aproximadamente 50% dos valores arrecadados a organizações que atuem na proteção de animais em situação de vulnerabilidade. Os outros 50% poderão ser destinados à manutenção, melhoria e evolução do site, bem como ao fortalecimento dos demais canais vinculados ao projeto.</p><p>A prestação de contas relacionada à monetização e aos repasses será publicada no grupo oficial do Telegram da campanha, como forma de dar mais visibilidade e transparência para a comunidade.</p></div>
+    <div class="modal-box"><div class="modal-top"><h3>Transparência</h3><button class="modal-close" onclick="fecharModal('transparenciaModal')">Fechar</button></div><p>A monetização poderá ser usada para manutenção e evolução do projeto. A prestação de contas será publicada no grupo oficial do Telegram.</p></div>
   </div>
 </body>
-</html>
+            </html>
