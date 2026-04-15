@@ -1,11 +1,10 @@
 <!DOCTYPE html><html lang="pt-BR">
 <head>
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1618098368838570"
-     crossorigin="anonymous"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Novas Datas — BTS WORLD TOUR 'ARIRANG' 💜</title>
-  <meta name="description" content="Abaixo-assinado de fãs por novas datas da BTS WORLD TOUR 'ARIRANG' no Brasil." />  <script type="module">
+  <meta name="description" content="Abaixo-assinado de fãs por novas datas da BTS WORLD TOUR 'ARIRANG' no Brasil." />
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1618098368838570" crossorigin="anonymous"></script>  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import {
       getAuth,
@@ -26,7 +25,11 @@
       query,
       where,
       getDocs,
-      limit
+      limit,
+      getDoc,
+      setDoc,
+      runTransaction,
+      increment
     } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -41,6 +44,7 @@
 
     const META = 1000000;
     const CACHE_PREFIX = "municipios_uf_";
+    const ESTATISTICAS_DOC = doc(db, "estatisticas", "publico");
     let adminUnsubscribe = null;
     let cidadesDoEstado = [];
 
@@ -59,6 +63,7 @@
 
     function popularEstados() {
       const select = document.getElementById("estado");
+      if (!select) return;
       select.innerHTML = '<option value="">Selecione o estado</option>';
       ESTADOS.forEach((uf) => {
         const option = document.createElement("option");
@@ -87,9 +92,7 @@
 
       const bytes = new TextEncoder().encode(raw);
       const hash = await crypto.subtle.digest("SHA-256", bytes);
-      return Array.from(new Uint8Array(hash))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
+      return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
     }
 
     function abrirModal(id) {
@@ -102,11 +105,18 @@
       if (el) el.style.display = "none";
     }
 
-    function ativarCelebracao() {
-      document.body.classList.add("signature-wave");
-      document.body.classList.add("signature-flash");
-      setTimeout(() => document.body.classList.remove("signature-flash"), 900);
-      setTimeout(() => document.body.classList.remove("signature-wave"), 3200);
+    function mostrarToast(texto, tipo = "success") {
+      const atual = document.querySelector(".toast-popup");
+      if (atual) atual.remove();
+      const msg = document.createElement("div");
+      msg.className = `toast-popup ${tipo}`;
+      msg.textContent = texto;
+      document.body.appendChild(msg);
+      setTimeout(() => msg.classList.add("show"), 30);
+      setTimeout(() => {
+        msg.classList.remove("show");
+        setTimeout(() => msg.remove(), 350);
+      }, 2800);
     }
 
     function mostrarMensagemSucesso() {
@@ -117,17 +127,11 @@
       mostrarToast(`⚠️ ${texto}`, "error");
     }
 
-    function mostrarToast(texto, tipo = "success") {
-      const msg = document.createElement("div");
-      msg.className = `toast-popup ${tipo}`;
-      msg.textContent = texto;
-      document.body.appendChild(msg);
-
-      setTimeout(() => msg.classList.add("show"), 30);
-      setTimeout(() => {
-        msg.classList.remove("show");
-        setTimeout(() => msg.remove(), 350);
-      }, 2800);
+    function ativarCelebracao() {
+      document.body.classList.add("signature-wave");
+      document.body.classList.add("signature-flash");
+      setTimeout(() => document.body.classList.remove("signature-flash"), 900);
+      setTimeout(() => document.body.classList.remove("signature-wave"), 3200);
     }
 
     function criarEfeitoAssinatura() {
@@ -135,7 +139,6 @@
       if (!container) return;
       container.innerHTML = "";
       const symbols = ["💜", "✨", "💫", "✦", "✧"];
-
       for (let i = 0; i < 26; i += 1) {
         const el = document.createElement("div");
         el.className = "burst-item";
@@ -145,11 +148,9 @@
         el.style.fontSize = `${16 + Math.random() * 18}px`;
         container.appendChild(el);
       }
-
       container.classList.add("show-burst");
       ativarCelebracao();
       mostrarMensagemSucesso();
-
       setTimeout(() => {
         container.classList.remove("show-burst");
         container.innerHTML = "";
@@ -159,7 +160,6 @@
     async function carregarCidadesPorEstado(uf) {
       const cidadeInput = document.getElementById("cidade");
       const sugestoesBox = document.getElementById("cidadeSugestoes");
-
       if (!cidadeInput || !sugestoesBox) return;
 
       cidadeInput.value = "";
@@ -168,13 +168,11 @@
       sugestoesBox.innerHTML = "";
       sugestoesBox.style.display = "none";
       cidadesDoEstado = [];
-
       if (!uf) return;
 
       try {
         const chave = `${CACHE_PREFIX}${uf}`;
         const cache = sessionStorage.getItem(chave);
-
         if (cache) {
           cidadesDoEstado = JSON.parse(cache);
           cidadeInput.disabled = false;
@@ -187,7 +185,6 @@
         const cidades = await response.json();
         cidadesDoEstado = Array.isArray(cidades) ? cidades.map((cidade) => cidade.nome) : [];
         sessionStorage.setItem(chave, JSON.stringify(cidadesDoEstado));
-
         cidadeInput.disabled = false;
         cidadeInput.placeholder = "Selecione ou pesquise sua cidade";
         renderizarSugestoes(cidadesDoEstado);
@@ -201,13 +198,11 @@
       const sugestoesBox = document.getElementById("cidadeSugestoes");
       if (!sugestoesBox) return;
       sugestoesBox.innerHTML = "";
-
       if (!lista.length) {
         sugestoesBox.innerHTML = '<div class="cidade-vazia">Nenhuma cidade encontrada</div>';
         sugestoesBox.style.display = "block";
         return;
       }
-
       lista.forEach((nomeCidade) => {
         const item = document.createElement("button");
         item.type = "button";
@@ -216,7 +211,6 @@
         item.addEventListener("click", () => selecionarCidade(nomeCidade));
         sugestoesBox.appendChild(item);
       });
-
       sugestoesBox.style.display = "block";
     }
 
@@ -233,7 +227,6 @@
         renderizarSugestoes(cidadesDoEstado);
         return;
       }
-
       const filtradas = cidadesDoEstado.filter((cidade) => cidade.toLowerCase().includes(termo));
       renderizarSugestoes(filtradas);
     }
@@ -242,11 +235,8 @@
       if (!cidadesDoEstado.length) return;
       const cidade = document.getElementById("cidade");
       if (!cidade) return;
-      if (!cidade.value.trim()) {
-        renderizarSugestoes(cidadesDoEstado);
-      } else {
-        filtrarCidades(cidade.value);
-      }
+      if (!cidade.value.trim()) renderizarSugestoes(cidadesDoEstado);
+      else filtrarCidades(cidade.value);
     }
 
     function esconderSugestoesComDelay() {
@@ -267,42 +257,47 @@
     }
 
     function mostrarAdminAba(aba) {
-      document.querySelectorAll(".admin-tab-content").forEach((el) => {
-        el.style.display = "none";
-      });
+      document.querySelectorAll(".admin-tab-content").forEach((el) => { el.style.display = "none"; });
       document.querySelectorAll(".admin-nav button").forEach((btn) => btn.classList.remove("active"));
       document.getElementById(aba)?.style.setProperty("display", "block");
       document.querySelector(`[data-admin-tab="${aba}"]`)?.classList.add("active");
     }
 
-    function renderizarRankingEstados(registros) {
-      const totais = {};
-      ESTADOS.forEach((uf) => {
-        totais[uf] = 0;
+    async function atualizarEstatisticasPublicas(estado) {
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(ESTATISTICAS_DOC);
+        const atual = snap.exists() ? snap.data() : {};
+        const rankingAtual = atual.rankingEstados || {};
+        const novoTotal = (atual.totalAssinaturas || 0) + 1;
+        const novoRanking = {
+          ...rankingAtual,
+          [estado]: (rankingAtual[estado] || 0) + 1
+        };
+        transaction.set(ESTATISTICAS_DOC, {
+          totalAssinaturas: novoTotal,
+          rankingEstados: novoRanking,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
       });
+    }
 
-      registros.forEach((registro) => {
-        const uf = (registro.estado || "").toUpperCase();
-        if (uf in totais) totais[uf] += 1;
-      });
-
-      const ranking = Object.entries(totais)
-        .filter(([, total]) => total > 0)
-        .sort((a, b) => b[1] - a[1]);
-
+    function renderizarRankingEstadosPublico(rankingEstados = {}, totalAssinaturas = 0) {
       const rankingLista = document.getElementById("rankingLista");
       const rankingGrafico = document.getElementById("rankingGrafico");
       const topEstado = document.getElementById("topEstado");
       const totalEstados = document.getElementById("totalEstados");
       const totalAssinaturasAdmin = document.getElementById("totalAssinaturasAdmin");
-
       if (!rankingLista || !rankingGrafico || !topEstado || !totalEstados || !totalAssinaturasAdmin) return;
+
+      const ranking = Object.entries(rankingEstados)
+        .filter(([, total]) => total > 0)
+        .sort((a, b) => b[1] - a[1]);
 
       rankingLista.innerHTML = "";
       rankingGrafico.innerHTML = "";
       topEstado.textContent = ranking.length ? ranking[0][0] : "—";
       totalEstados.textContent = String(ranking.length);
-      totalAssinaturasAdmin.textContent = registros.length.toLocaleString("pt-BR");
+      totalAssinaturasAdmin.textContent = Number(totalAssinaturas || 0).toLocaleString("pt-BR");
 
       if (!ranking.length) {
         rankingLista.innerHTML = '<div class="empty-state">Ainda não há assinaturas suficientes para exibir o ranking.</div>';
@@ -314,7 +309,6 @@
       ranking.slice(0, 10).forEach(([estado, total], index) => {
         const medalhas = ["🥇", "🥈", "🥉"];
         const prefixo = medalhas[index] || `#${index + 1}`;
-
         const item = document.createElement("div");
         item.className = "ranking-item";
         item.innerHTML = `<strong>${prefixo} ${estado}</strong><span>${total} assinatura${total > 1 ? "s" : ""}</span>`;
@@ -325,9 +319,7 @@
         const largura = Math.max((total / maior) * 100, 8);
         barra.innerHTML = `
           <div class="chart-label">${estado}</div>
-          <div class="chart-bar-wrap">
-            <div class="chart-bar" style="width:${largura}%"></div>
-          </div>
+          <div class="chart-bar-wrap"><div class="chart-bar" style="width:${largura}%"></div></div>
           <div class="chart-value">${total}</div>
         `;
         rankingGrafico.appendChild(barra);
@@ -335,11 +327,7 @@
     }
 
     async function assinaturaExistentePorDispositivo(fingerprintHash) {
-      const q = query(
-        collection(db, "assinaturas"),
-        where("fingerprintHash", "==", fingerprintHash),
-        limit(1)
-      );
+      const q = query(collection(db, "assinaturas_privadas"), where("fingerprintHash", "==", fingerprintHash), limit(1));
       const snapshot = await getDocs(q);
       return !snapshot.empty;
     }
@@ -351,30 +339,11 @@
       const consentimento = document.getElementById("consentimento")?.checked || false;
       const submitBtn = document.getElementById("submitBtn");
 
-      if (!validarNomeCompleto(nome)) {
-        mostrarMensagemErro("Informe nome e sobrenome para assinar o abaixo-assinado.");
-        return;
-      }
-
-      if (!estado || !cidade) {
-        mostrarMensagemErro("Preencha estado e cidade.");
-        return;
-      }
-
-      if (!cidadesDoEstado.includes(cidade)) {
-        mostrarMensagemErro("Selecione uma cidade válida da lista do estado escolhido.");
-        return;
-      }
-
-      if (!consentimento) {
-        mostrarMensagemErro("Confirme o consentimento para concluir a assinatura.");
-        return;
-      }
-
-      if (localStorage.getItem("assinaturaRegistrada") === "true") {
-        mostrarMensagemErro("Este dispositivo já possui uma assinatura registrada.");
-        return;
-      }
+      if (!validarNomeCompleto(nome)) return mostrarMensagemErro("Informe nome e sobrenome para assinar o abaixo-assinado.");
+      if (!estado || !cidade) return mostrarMensagemErro("Preencha estado e cidade.");
+      if (!cidadesDoEstado.includes(cidade)) return mostrarMensagemErro("Selecione uma cidade válida da lista do estado escolhido.");
+      if (!consentimento) return mostrarMensagemErro("Confirme o consentimento para concluir a assinatura.");
+      if (localStorage.getItem("assinaturaRegistrada") === "true") return mostrarMensagemErro("Este dispositivo já possui uma assinatura registrada.");
 
       if (submitBtn) {
         submitBtn.disabled = true;
@@ -384,14 +353,12 @@
       try {
         const fingerprintHash = await gerarFingerprint();
         const jaExiste = await assinaturaExistentePorDispositivo(fingerprintHash);
-
         if (jaExiste || localStorage.getItem("assinaturaRegistrada") === "true") {
           localStorage.setItem("assinaturaRegistrada", "true");
-          mostrarMensagemErro("Este dispositivo já possui uma assinatura registrada.");
-          return;
+          return mostrarMensagemErro("Este dispositivo já possui uma assinatura registrada.");
         }
 
-        await addDoc(collection(db, "assinaturas"), {
+        await addDoc(collection(db, "assinaturas_privadas"), {
           nome,
           estado,
           cidade,
@@ -400,6 +367,8 @@
           consentimento: true,
           origem: "site"
         });
+
+        await atualizarEstatisticasPublicas(estado);
 
         localStorage.setItem("assinaturaRegistrada", "true");
         document.getElementById("nome").value = "";
@@ -427,27 +396,21 @@
       const url = window.location.href;
       try {
         if (navigator.share) {
-          await navigator.share({
-            title: "Novas Datas — BTS WORLD TOUR 'ARIRANG' 💜",
-            text: "Assine a campanha por novas datas da turnê ARIRANG no Brasil.",
-            url
-          });
+          await navigator.share({ title: "Novas Datas — BTS WORLD TOUR 'ARIRANG' 💜", text: "Assine a campanha por novas datas da turnê ARIRANG no Brasil.", url });
           return;
         }
-
         if (navigator.clipboard?.writeText) {
           await navigator.clipboard.writeText(url);
-          alert("Link copiado!");
+          mostrarToast("🔗 Link copiado!", "success");
           return;
         }
-
         prompt("Copie o link abaixo:", url);
       } catch (error) {
         console.error(error);
         try {
           if (navigator.clipboard?.writeText) {
             await navigator.clipboard.writeText(url);
-            alert("Link copiado!");
+            mostrarToast("🔗 Link copiado!", "success");
           } else {
             prompt("Copie o link abaixo:", url);
           }
@@ -462,11 +425,7 @@
       const email = document.getElementById("adminEmail")?.value.trim() || "";
       const senha = document.getElementById("adminSenha")?.value || "";
       const loginBtn = document.getElementById("adminLoginBtn");
-
-      if (!email || !senha) {
-        alert("Preencha e-mail e senha do admin.");
-        return;
-      }
+      if (!email || !senha) return mostrarMensagemErro("Preencha e-mail e senha do admin.");
 
       if (loginBtn) {
         loginBtn.disabled = true;
@@ -480,7 +439,7 @@
         document.getElementById("adminSenha").value = "";
       } catch (error) {
         console.error(error);
-        alert("Não foi possível entrar no admin.");
+        mostrarMensagemErro("Não foi possível entrar no admin.");
       } finally {
         if (loginBtn) {
           loginBtn.disabled = false;
@@ -490,23 +449,31 @@
     }
 
     async function sairAdmin() {
-      try {
-        await signOut(auth);
-      } catch (error) {
-        console.error(error);
-      }
+      try { await signOut(auth); } catch (error) { console.error(error); }
     }
 
-    async function excluirAssinatura(id, nome) {
+    async function excluirAssinatura(id, nome, estado) {
       const confirmar = confirm(`Deseja remover a assinatura de ${nome}?`);
       if (!confirmar) return;
-
       try {
-        await deleteDoc(doc(db, "assinaturas", id));
-        alert("Assinatura removida.");
+        await deleteDoc(doc(db, "assinaturas_privadas", id));
+        await runTransaction(db, async (transaction) => {
+          const snap = await transaction.get(ESTATISTICAS_DOC);
+          const atual = snap.exists() ? snap.data() : {};
+          const rankingAtual = atual.rankingEstados || {};
+          const totalAtual = atual.totalAssinaturas || 0;
+          const estadoAtual = rankingAtual[estado] || 0;
+          const novoRanking = { ...rankingAtual, [estado]: Math.max(estadoAtual - 1, 0) };
+          transaction.set(ESTATISTICAS_DOC, {
+            totalAssinaturas: Math.max(totalAtual - 1, 0),
+            rankingEstados: novoRanking,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        });
+        mostrarToast("🗑️ Assinatura removida.", "success");
       } catch (error) {
         console.error(error);
-        alert("Não foi possível excluir agora.");
+        mostrarMensagemErro("Não foi possível excluir agora.");
       }
     }
 
@@ -515,33 +482,30 @@
       const adminPanel = document.getElementById("adminPanel");
       const adminListaEl = document.getElementById("adminLista");
       if (!adminTrigger || !adminPanel || !adminListaEl) return;
-
       adminTrigger.style.display = "none";
       adminPanel.style.display = "block";
       if (adminUnsubscribe) adminUnsubscribe();
 
-      const ref = collection(db, "assinaturas");
+      const ref = collection(db, "assinaturas_privadas");
       adminUnsubscribe = onSnapshot(ref, (snapshot) => {
         const registros = snapshot.docs.map((registro) => ({ id: registro.id, ...registro.data() }));
         registros.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-
         adminListaEl.innerHTML = "";
         registros.forEach((registro, index) => {
           const item = document.createElement("div");
           item.className = "admin-item";
           const nomeSeguro = (registro.nome || "Sem nome").replace(/'/g, "\\'");
+          const estadoSeguro = (registro.estado || "").replace(/'/g, "\\'");
           item.innerHTML = `
             <span>#${index + 1}</span>
             <div class="admin-info">
               <strong>${registro.nome || "Sem nome"}</strong>
               <small>${registro.estado || ""} • ${registro.cidade || "Sem cidade"}</small>
             </div>
-            <button class="delete-btn" onclick="excluirAssinatura('${registro.id}', '${nomeSeguro}')">Excluir</button>
+            <button class="delete-btn" onclick="excluirAssinatura('${registro.id}', '${nomeSeguro}', '${estadoSeguro}')">Excluir</button>
           `;
           adminListaEl.appendChild(item);
         });
-
-        renderizarRankingEstados(registros);
       }, (error) => {
         console.error(error);
         adminListaEl.innerHTML = '<div class="empty-state">Não foi possível carregar os resultados do admin.</div>';
@@ -562,12 +526,12 @@
       const contadorEl = document.getElementById("contador");
       const progressoEl = document.getElementById("progresso");
       if (!contadorEl || !progressoEl) return;
-
-      const ref = collection(db, "assinaturas");
-      onSnapshot(ref, (snapshot) => {
-        const total = snapshot.size;
+      onSnapshot(ESTATISTICAS_DOC, (snapshot) => {
+        const dados = snapshot.exists() ? snapshot.data() : {};
+        const total = Number(dados.totalAssinaturas || 0);
         contadorEl.textContent = total.toLocaleString("pt-BR");
         progressoEl.style.width = `${Math.min((total / META) * 100, 100)}%`;
+        renderizarRankingEstadosPublico(dados.rankingEstados || {}, total);
       }, (error) => console.error(error));
     }
 
@@ -576,47 +540,31 @@
       popularEstados();
       iniciarContador();
 
-      const submitBtn = document.getElementById("submitBtn");
-      const shareBtn = document.getElementById("shareBtn");
-      const openAdminBtn = document.getElementById("openAdminBtn");
-      const estado = document.getElementById("estado");
-      const cidade = document.getElementById("cidade");
-      const adminLoginBtn = document.getElementById("adminLoginBtn");
-      const adminLogoutBtn = document.getElementById("adminLogoutBtn");
-      const adminMenuBtn = document.getElementById("adminMenuBtn");
-      const adminMenuCloseBtn = document.getElementById("adminMenuCloseBtn");
-      const adminBackdrop = document.getElementById("adminBackdrop");
-
-      submitBtn?.addEventListener("click", assinar);
-      shareBtn?.addEventListener("click", compartilhar);
-      openAdminBtn?.addEventListener("click", () => abrirModal("adminLoginModal"));
-      adminLoginBtn?.addEventListener("click", loginAdmin);
-      adminLogoutBtn?.addEventListener("click", sairAdmin);
-      adminMenuBtn?.addEventListener("click", abrirAdminMenu);
-      adminMenuCloseBtn?.addEventListener("click", fecharAdminMenu);
-      adminBackdrop?.addEventListener("click", fecharAdminMenu);
-      estado?.addEventListener("change", (e) => carregarCidadesPorEstado(e.target.value));
-      cidade?.addEventListener("input", (e) => filtrarCidades(e.target.value));
-      cidade?.addEventListener("focus", mostrarSugestoesSePossivel);
-      cidade?.addEventListener("blur", esconderSugestoesComDelay);
+      document.getElementById("submitBtn")?.addEventListener("click", assinar);
+      document.getElementById("shareBtn")?.addEventListener("click", compartilhar);
+      document.getElementById("openAdminBtn")?.addEventListener("click", () => abrirModal("adminLoginModal"));
+      document.getElementById("adminLoginBtn")?.addEventListener("click", loginAdmin);
+      document.getElementById("adminLogoutBtn")?.addEventListener("click", sairAdmin);
+      document.getElementById("adminMenuBtn")?.addEventListener("click", abrirAdminMenu);
+      document.getElementById("adminMenuCloseBtn")?.addEventListener("click", fecharAdminMenu);
+      document.getElementById("adminBackdrop")?.addEventListener("click", fecharAdminMenu);
+      document.getElementById("estado")?.addEventListener("change", (e) => carregarCidadesPorEstado(e.target.value));
+      document.getElementById("cidade")?.addEventListener("input", (e) => filtrarCidades(e.target.value));
+      document.getElementById("cidade")?.addEventListener("focus", mostrarSugestoesSePossivel);
+      document.getElementById("cidade")?.addEventListener("blur", esconderSugestoesComDelay);
 
       document.querySelectorAll("[data-open-modal]").forEach((btn) => {
         btn.addEventListener("click", () => abrirModal(btn.dataset.openModal));
       });
-
       document.querySelectorAll("[data-admin-tab]").forEach((btn) => {
         btn.addEventListener("click", () => mostrarAdminAba(btn.dataset.adminTab));
       });
-
       mostrarAdminAba("adminAssinaturasTab");
     });
 
     onAuthStateChanged(auth, (user) => {
-      if (user) {
-        ligarAdmin();
-      } else {
-        desligarAdmin();
-      }
+      if (user) ligarAdmin();
+      else desligarAdmin();
     });
 
     window.abrirModal = abrirModal;
@@ -624,7 +572,6 @@
     window.excluirAssinatura = excluirAssinatura;
   </script>  <style>
     * { box-sizing: border-box; }
-
     :root {
       --bg1: #230031;
       --bg2: #4b0082;
@@ -634,7 +581,6 @@
       --text-soft: rgba(255,255,255,0.84);
       --shadow: 0 24px 70px rgba(0,0,0,0.28);
     }
-
     body {
       margin: 0;
       min-height: 100vh;
@@ -643,13 +589,11 @@
       background: linear-gradient(135deg, var(--bg1), var(--bg2) 48%, var(--bg3));
       overflow-x: hidden;
       position: relative;
-      transition: background 0.45s ease, filter 0.45s ease;
+      transition: background .45s ease;
     }
-
     body.signature-flash {
       background: radial-gradient(circle at center, rgba(218,130,255,0.35), transparent 35%), linear-gradient(135deg, #2a003b, #5a0da8 46%, #a548ff);
     }
-
     .background {
       position: fixed;
       inset: 0;
@@ -657,19 +601,15 @@
       overflow: hidden;
       pointer-events: none;
     }
-
     .army-symbol {
       position: absolute;
       width: 18px;
       height: 34px;
-      opacity: 0.28;
+      opacity: .28;
       animation: symbolWave 5s infinite ease-in-out;
-      filter: drop-shadow(0 0 8px rgba(120,110,255,0.38)) drop-shadow(0 0 18px rgba(180,140,255,0.2));
-      transition: filter .4s ease, opacity .4s ease;
+      filter: drop-shadow(0 0 8px rgba(120,110,255,.38)) drop-shadow(0 0 18px rgba(180,140,255,.2));
     }
-
-    .army-symbol::before,
-    .army-symbol::after {
+    .army-symbol::before, .army-symbol::after {
       content: "";
       position: absolute;
       top: 0;
@@ -678,46 +618,29 @@
       background: linear-gradient(180deg, #6f88ff, #b88cff);
       border-radius: 1px;
     }
-
-    .army-symbol::before {
-      left: 0;
-      transform: skewY(12deg);
-      transform-origin: top;
-    }
-
-    .army-symbol::after {
-      right: 0;
-      transform: skewY(-12deg);
-      transform-origin: top;
-    }
-
+    .army-symbol::before { left: 0; transform: skewY(12deg); transform-origin: top; }
+    .army-symbol::after { right: 0; transform: skewY(-12deg); transform-origin: top; }
     @keyframes symbolWave {
-      0% { transform: scale(1); opacity: 0.22; }
-      15% { transform: scale(1.08); opacity: 0.38; }
-      30% { transform: scale(0.95); opacity: 0.24; }
-      45% { transform: scale(1.14); opacity: 0.52; }
-      60% { transform: scale(0.96); opacity: 0.28; }
-      75% { transform: scale(1.1); opacity: 0.42; }
-      100% { transform: scale(1); opacity: 0.22; }
+      0% { transform: scale(1); opacity: .22; }
+      15% { transform: scale(1.08); opacity: .38; }
+      30% { transform: scale(.95); opacity: .24; }
+      45% { transform: scale(1.14); opacity: .52; }
+      60% { transform: scale(.96); opacity: .28; }
+      75% { transform: scale(1.1); opacity: .42; }
+      100% { transform: scale(1); opacity: .22; }
     }
-
-    body.signature-wave .army-symbol {
-      animation: symbolWaveStrong 1s ease-in-out 3;
-    }
-
+    body.signature-wave .army-symbol { animation: symbolWaveStrong 1s ease-in-out 3; }
     @keyframes symbolWaveStrong {
-      0% { transform: scale(1); opacity: 0.28; filter: drop-shadow(0 0 8px rgba(120,110,255,0.38)) drop-shadow(0 0 18px rgba(180,140,255,0.2)); }
-      35% { transform: scale(1.36); opacity: 0.95; filter: drop-shadow(0 0 16px rgba(120,110,255,0.9)) drop-shadow(0 0 30px rgba(180,140,255,0.82)); }
-      65% { transform: scale(0.94); opacity: 0.5; }
-      100% { transform: scale(1); opacity: 0.28; }
+      0% { transform: scale(1); opacity: .28; }
+      35% { transform: scale(1.36); opacity: .95; }
+      65% { transform: scale(.94); opacity: .5; }
+      100% { transform: scale(1); opacity: .28; }
     }
-
     .symbol1 { top: 8%; left: 8%; animation-delay: 0s; }
-    .symbol2 { top: 18%; right: 11%; animation-delay: 0.9s; }
+    .symbol2 { top: 18%; right: 11%; animation-delay: .9s; }
     .symbol3 { bottom: 12%; left: 13%; animation-delay: 1.8s; }
     .symbol4 { bottom: 20%; right: 9%; animation-delay: 2.7s; }
     .symbol5 { top: 42%; left: 49%; animation-delay: 3.6s; }
-
     .page {
       position: relative;
       z-index: 1;
@@ -727,7 +650,6 @@
       justify-content: center;
       padding: 12px 16px 22px;
     }
-
     .layout {
       width: 100%;
       max-width: 1120px;
@@ -736,7 +658,6 @@
       gap: 16px;
       align-items: start;
     }
-
     .card, .admin-panel {
       background: var(--glass);
       border: 1px solid var(--glass-border);
@@ -745,154 +666,75 @@
       border-radius: 28px;
       box-shadow: var(--shadow);
     }
-
-    .card {
-      padding: 22px 22px 20px;
-      animation: cardEnter .5s ease;
-    }
-
-    @keyframes cardEnter {
-      from { opacity: 0; transform: translateY(12px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
+    .card { padding: 22px 22px 20px; }
     .eyebrow {
       display: inline-block;
       padding: 8px 14px;
       border-radius: 999px;
-      background: rgba(255,255,255,0.14);
+      background: rgba(255,255,255,.14);
       font-size: 12px;
-      letter-spacing: 0.4px;
+      letter-spacing: .4px;
       margin-bottom: 12px;
     }
-
-    h1 {
-      margin: 0 0 8px;
-      font-size: clamp(30px, 4vw, 42px);
-      line-height: 1.02;
-    }
-
-    .sub {
-      margin: 0 0 18px;
-      color: var(--text-soft);
-      font-size: 15px;
-      line-height: 1.52;
-      max-width: 760px;
-    }
-
+    h1 { margin: 0 0 8px; font-size: clamp(30px, 4vw, 42px); line-height: 1.02; }
+    .sub { margin: 0 0 18px; color: var(--text-soft); font-size: 15px; line-height: 1.52; max-width: 760px; }
     .stats {
       display: grid;
       grid-template-columns: repeat(2, minmax(150px, 1fr));
       gap: 12px;
       margin-bottom: 16px;
     }
-
     .stat-box {
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.12);
       border-radius: 18px;
       padding: 15px;
-      transition: transform .2s ease, background .2s ease;
     }
-
-    .stat-box:hover {
-      transform: translateY(-2px);
-      background: rgba(255,255,255,0.1);
-    }
-
-    .stat-box span {
-      display: block;
-      font-size: 12px;
-      opacity: 0.82;
-      margin-bottom: 6px;
-    }
-
-    .stat-box strong {
-      font-size: 24px;
-      display: block;
-    }
-
+    .stat-box span { display: block; font-size: 12px; opacity: .82; margin-bottom: 6px; }
+    .stat-box strong { font-size: 24px; display: block; }
     .barra {
       height: 12px;
-      background: rgba(255,255,255,0.16);
+      background: rgba(255,255,255,.16);
       border-radius: 999px;
       overflow: hidden;
-      margin: 10px 0 10px;
+      margin: 10px 0;
     }
-
     .progresso {
       height: 100%;
       width: 0%;
       transition: width .6s ease;
-      background: linear-gradient(90deg, rgba(255,255,255,0.95), rgba(255,223,255,0.95));
-      box-shadow: 0 0 18px rgba(255,255,255,0.62);
+      background: linear-gradient(90deg, rgba(255,255,255,.95), rgba(255,223,255,.95));
+      box-shadow: 0 0 18px rgba(255,255,255,.62);
     }
-
-    .meta-text {
-      font-size: 13px;
-      color: var(--text-soft);
-      margin-bottom: 18px;
-    }
-
+    .meta-text { font-size: 13px; color: var(--text-soft); margin-bottom: 18px; }
     .form-wrap {
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.12);
       border-radius: 22px;
       padding: 18px;
       position: relative;
       overflow: visible;
     }
-
     .form-grid {
       display: grid;
-      grid-template-columns: 1.1fr 0.7fr 1fr;
+      grid-template-columns: 1.1fr .7fr 1fr;
       gap: 12px;
     }
-
     .field { display: flex; flex-direction: column; gap: 8px; }
-
-    .field label {
-      font-size: 13px;
-      opacity: 0.9;
-    }
-
+    .field label { font-size: 13px; opacity: .9; }
     input, select {
       width: 100%;
       padding: 14px 15px;
       border-radius: 16px;
-      border: 1px solid rgba(255,255,255,0.16);
-      background: rgba(255,255,255,0.94);
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.94);
       color: #2d1740;
       font-size: 15px;
       outline: none;
-      transition: box-shadow .2s ease, border-color .2s ease, transform .2s ease;
     }
-
-    input:focus, select:focus {
-      border-color: rgba(200,111,255,0.55);
-      box-shadow: 0 0 0 4px rgba(200,111,255,0.12);
-      transform: translateY(-1px);
-    }
-
-    select {
-      appearance: auto;
-      -webkit-appearance: menulist;
-      -moz-appearance: menulist;
-      cursor: pointer;
-      pointer-events: auto;
-    }
-
-    input::placeholder { color: #735c8a; }
-
-    .hint {
-      font-size: 12px;
-      color: rgba(255,255,255,0.78);
-      margin-top: 10px;
-      line-height: 1.5;
-    }
-
+    select { appearance: auto; -webkit-appearance: menulist; -moz-appearance: menulist; cursor: pointer; }
+    .hint { font-size: 12px; color: rgba(255,255,255,.78); margin-top: 10px; line-height: 1.5; }
     .cidade-search-wrap { position: relative; }
-
     .cidade-sugestoes {
       display: none;
       position: absolute;
@@ -901,16 +743,14 @@
       right: 0;
       max-height: 320px;
       overflow: auto;
-      background: rgba(58, 18, 88, 0.98);
-      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(58,18,88,.98);
+      border: 1px solid rgba(255,255,255,.14);
       border-radius: 16px;
-      box-shadow: 0 18px 36px rgba(0,0,0,0.25);
+      box-shadow: 0 18px 36px rgba(0,0,0,.25);
       z-index: 8;
       padding: 6px;
       backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
     }
-
     .cidade-opcao {
       width: 100%;
       text-align: left;
@@ -922,19 +762,8 @@
       font-size: 14px;
       font-weight: 500;
     }
-
-    .cidade-opcao:hover {
-      background: rgba(255,255,255,0.1);
-      transform: none;
-      opacity: 1;
-    }
-
-    .cidade-vazia {
-      padding: 12px;
-      font-size: 13px;
-      color: rgba(255,255,255,0.8);
-    }
-
+    .cidade-opcao:hover { background: rgba(255,255,255,.1); }
+    .cidade-vazia { padding: 12px; font-size: 13px; color: rgba(255,255,255,.8); }
     .consent {
       margin-top: 14px;
       display: flex;
@@ -942,10 +771,9 @@
       align-items: flex-start;
       text-align: left;
       font-size: 13px;
-      color: rgba(255,255,255,0.88);
+      color: rgba(255,255,255,.88);
       line-height: 1.5;
     }
-
     .consent input {
       width: 18px;
       height: 18px;
@@ -953,26 +781,14 @@
       padding: 0;
       accent-color: #c86fff;
     }
-
-    .actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 16px;
-    }
-
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
     button {
       border: none;
       border-radius: 16px;
       padding: 14px 18px;
       font-weight: 700;
       cursor: pointer;
-      transition: transform .2s ease, opacity .2s ease, box-shadow .2s ease;
     }
-
-    button:hover { transform: translateY(-1px); opacity: .97; }
-    button:disabled { opacity: .65; cursor: not-allowed; transform: none; }
-
     .primary-btn {
       flex: 1;
       min-width: 180px;
@@ -980,15 +796,11 @@
       color: white;
       box-shadow: 0 10px 26px rgba(209,110,255,.3);
     }
-
-    .primary-btn:hover { box-shadow: 0 14px 30px rgba(209,110,255,.4); }
-
     .secondary-btn {
-      background: rgba(255,255,255,0.14);
+      background: rgba(255,255,255,.14);
       color: white;
-      border: 1px solid rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,.14);
     }
-
     .telegram-btn {
       display: inline-flex;
       justify-content: center;
@@ -1001,33 +813,10 @@
       background: #0088cc;
       color: white;
       font-weight: 700;
-      transition: transform .2s ease, box-shadow .2s ease;
     }
-
-    .telegram-btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 22px rgba(0,136,204,0.28);
-    }
-
-    .footer-links {
-      margin-top: 18px;
-      font-size: 12px;
-      opacity: .92;
-    }
-
-    .footer-links a {
-      color: white;
-      text-decoration: none;
-      margin: 0 6px;
-    }
-
-    .bottom-note {
-      margin-top: 16px;
-      font-size: 12px;
-      color: rgba(255,255,255,0.72);
-      line-height: 1.5;
-    }
-
+    .footer-links { margin-top: 18px; font-size: 12px; opacity: .92; }
+    .footer-links a { color: white; text-decoration: none; margin: 0 6px; }
+    .bottom-note { margin-top: 16px; font-size: 12px; color: rgba(255,255,255,.72); line-height: 1.5; }
     .admin-panel {
       display: none;
       padding: 22px;
@@ -1035,9 +824,7 @@
       max-height: 75vh;
       overflow: hidden;
       position: relative;
-      animation: cardEnter .4s ease;
     }
-
     .admin-top {
       display: flex;
       justify-content: space-between;
@@ -1045,15 +832,7 @@
       align-items: center;
       margin-bottom: 14px;
     }
-
-    .admin-top h3 { margin: 0; font-size: 22px; }
-
-    .admin-actions {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
-
+    .admin-actions { display: flex; gap: 10px; align-items: center; }
     .icon-btn {
       width: 46px;
       height: 46px;
@@ -1061,44 +840,25 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: rgba(255,255,255,0.12);
-      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.14);
       color: white;
       font-size: 22px;
       padding: 0;
     }
-
-    .admin-note {
-      font-size: 12px;
-      color: rgba(255,255,255,0.78);
-      line-height: 1.5;
-      margin-bottom: 12px;
-    }
-
-    .admin-lista {
-      max-height: calc(75vh - 110px);
-      overflow: auto;
-      padding-right: 4px;
-    }
-
+    .admin-note { font-size: 12px; color: rgba(255,255,255,.78); line-height: 1.5; margin-bottom: 12px; }
+    .admin-lista { max-height: calc(75vh - 110px); overflow: auto; padding-right: 4px; }
     .admin-item {
       display: grid;
       grid-template-columns: 52px 1fr auto;
       gap: 8px 12px;
       align-items: center;
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.1);
       border-radius: 18px;
       padding: 12px 14px;
       margin-bottom: 10px;
-      transition: transform .2s ease, background .2s ease;
     }
-
-    .admin-item:hover {
-      transform: translateY(-1px);
-      background: rgba(255,255,255,0.1);
-    }
-
     .admin-item span {
       grid-row: span 2;
       width: 42px;
@@ -1107,14 +867,12 @@
       align-items: center;
       justify-content: center;
       border-radius: 50%;
-      background: rgba(255,255,255,0.14);
+      background: rgba(255,255,255,.14);
       font-size: 12px;
       font-weight: 700;
     }
-
     .admin-info strong { display: block; font-size: 15px; }
-    .admin-info small { display: block; font-size: 13px; color: rgba(255,255,255,0.8); }
-
+    .admin-info small { display: block; font-size: 13px; color: rgba(255,255,255,.8); }
     .delete-btn {
       padding: 10px 12px;
       border-radius: 12px;
@@ -1125,37 +883,24 @@
       font-weight: 700;
       white-space: nowrap;
     }
-
-    .admin-trigger {
-      position: fixed;
-      right: 14px;
-      bottom: 14px;
-      z-index: 4;
-    }
-
+    .admin-trigger { position: fixed; right: 14px; bottom: 14px; z-index: 4; }
     .admin-trigger button {
       border-radius: 999px;
-      background: rgba(255,255,255,0.14);
+      background: rgba(255,255,255,.14);
       color: white;
-      border: 1px solid rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,.15);
       backdrop-filter: blur(10px);
     }
-
     .admin-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(8, 0, 20, 0.44);
+      background: rgba(8,0,20,.44);
       opacity: 0;
       pointer-events: none;
       transition: opacity .25s ease;
       z-index: 25;
     }
-
-    .admin-backdrop.show {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
+    .admin-backdrop.show { opacity: 1; pointer-events: auto; }
     .admin-menu-panel {
       position: fixed;
       top: 0;
@@ -1163,18 +908,15 @@
       width: min(430px, 92vw);
       height: 100vh;
       background: linear-gradient(180deg, rgba(60,10,95,.98), rgba(39,7,65,.98));
-      border-left: 1px solid rgba(255,255,255,0.12);
+      border-left: 1px solid rgba(255,255,255,.12);
       box-shadow: -18px 0 40px rgba(0,0,0,.32);
       z-index: 26;
       transition: right .28s ease;
       padding: 18px;
       overflow: auto;
       backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
     }
-
     .admin-menu-panel.open { right: 0; }
-
     .admin-menu-top {
       display: flex;
       justify-content: space-between;
@@ -1182,90 +924,51 @@
       gap: 10px;
       margin-bottom: 14px;
     }
-
-    .admin-menu-top h4 { margin: 0; font-size: 20px; }
-
     .admin-nav {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
       margin-bottom: 16px;
     }
-
     .admin-nav button {
-      background: rgba(255,255,255,0.08);
+      background: rgba(255,255,255,.08);
       color: white;
-      border: 1px solid rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,.1);
       padding: 12px 10px;
       border-radius: 14px;
       font-size: 13px;
     }
-
     .admin-nav button.active {
       background: linear-gradient(90deg, #c66bff, #f0a8ff);
       border-color: transparent;
     }
-
     .admin-tab-content { display: none; }
-
-    .ranking-box,
-    .chart-box,
-    .insight-box {
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.1);
+    .ranking-box, .chart-box, .insight-box {
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.1);
       border-radius: 18px;
       padding: 14px;
       margin-bottom: 12px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
     }
-
-    .ranking-box h5,
-    .chart-box h5,
-    .insight-box h5 {
-      margin: 0 0 12px;
-      font-size: 16px;
-    }
-
-    .insight-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
+    .insight-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .insight-pill {
       padding: 12px;
       border-radius: 16px;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.08);
     }
-
-    .insight-pill span {
-      display: block;
-      font-size: 12px;
-      color: rgba(255,255,255,0.76);
-      margin-bottom: 6px;
-    }
-
-    .insight-pill strong {
-      display: block;
-      font-size: 18px;
-    }
-
+    .insight-pill span { display: block; font-size: 12px; color: rgba(255,255,255,.76); margin-bottom: 6px; }
+    .insight-pill strong { display: block; font-size: 18px; }
     .ranking-item {
       display: flex;
       justify-content: space-between;
       gap: 10px;
       padding: 10px 12px;
       border-radius: 14px;
-      background: rgba(255,255,255,0.06);
+      background: rgba(255,255,255,.06);
       margin-bottom: 8px;
-      font-size: 14px;
       align-items: center;
     }
-
-    .ranking-item strong { font-size: 14px; }
-    .ranking-item span { font-size: 13px; color: rgba(255,255,255,0.82); }
-
     .chart-row {
       display: grid;
       grid-template-columns: 48px 1fr 44px;
@@ -1273,82 +976,41 @@
       gap: 10px;
       margin-bottom: 12px;
     }
-
-    .chart-label,
-    .chart-value {
-      font-size: 13px;
-      color: rgba(255,255,255,0.94);
-      font-weight: 700;
-    }
-
     .chart-bar-wrap {
       height: 14px;
-      background: rgba(255,255,255,0.12);
+      background: rgba(255,255,255,.12);
       border-radius: 999px;
       overflow: hidden;
-      position: relative;
     }
-
-    .chart-bar-wrap::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent 40%, rgba(255,255,255,0.08));
-      opacity: 0.5;
-    }
-
     .chart-bar {
       height: 100%;
       border-radius: 999px;
       background: linear-gradient(90deg, #c66bff, #ffd0ff);
-      box-shadow: 0 0 14px rgba(226,168,255,0.42);
-      position: relative;
-      animation: growBar .7s ease;
+      box-shadow: 0 0 14px rgba(226,168,255,.42);
     }
-
-    .chart-bar::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      right: 0;
-      width: 20px;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45));
-      opacity: 0.8;
-    }
-
-    @keyframes growBar { from { width: 0; } }
-
-    .empty-state {
-      font-size: 13px;
-      color: rgba(255,255,255,0.78);
-      line-height: 1.5;
-    }
-
+    .empty-state { font-size: 13px; color: rgba(255,255,255,.78); line-height: 1.5; }
     .modal-overlay {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(8, 0, 20, 0.74);
+      background: rgba(8,0,20,.74);
       z-index: 20;
       align-items: center;
       justify-content: center;
       padding: 18px;
     }
-
     .modal-box {
       width: min(92vw, 720px);
       background: linear-gradient(180deg, rgba(83,20,124,.98), rgba(54,10,94,.98));
-      border: 1px solid rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,.14);
       border-radius: 24px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
       padding: 22px 18px 18px;
       color: white;
       max-height: 80vh;
       overflow: auto;
       text-align: left;
     }
-
     .modal-top {
       display: flex;
       justify-content: space-between;
@@ -1356,52 +1018,34 @@
       gap: 12px;
       margin-bottom: 10px;
     }
-
-    .modal-top h3 { margin: 0; font-size: 22px; }
-
     .modal-close {
       padding: 10px 12px;
       border-radius: 12px;
-      background: rgba(255,255,255,0.14);
+      background: rgba(255,255,255,.14);
       color: white;
-      border: 1px solid rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,.14);
       font-size: 12px;
       font-weight: 700;
     }
-
-    .modal-box p,
-    .modal-box li {
-      line-height: 1.7;
-      color: rgba(255,255,255,0.92);
-      font-size: 15px;
-    }
-
-    .modal-box ul { margin: 0 0 14px 18px; padding: 0; }
-    .modal-box li { margin-bottom: 8px; }
-
+    .modal-box p, .modal-box li { line-height: 1.7; color: rgba(255,255,255,.92); font-size: 15px; }
     .celebration {
       position: absolute;
       inset: 0;
       pointer-events: none;
       overflow: hidden;
     }
-
     .burst-item {
       position: absolute;
       bottom: 12px;
       opacity: 0;
       animation: burstUp 1.8s ease forwards;
-      text-shadow: 0 0 12px rgba(255,255,255,0.45);
+      text-shadow: 0 0 12px rgba(255,255,255,.45);
     }
-
-    .show-burst { display: block; }
-
     @keyframes burstUp {
       0% { transform: translateY(0) scale(.8) rotate(0deg); opacity: 0; }
       15% { opacity: 1; }
       100% { transform: translateY(-220px) scale(1.2) rotate(18deg); opacity: 0; }
     }
-
     .toast-popup {
       position: fixed;
       left: 50%;
@@ -1411,56 +1055,31 @@
       padding: 14px 18px;
       border-radius: 18px;
       font-weight: 700;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+      box-shadow: 0 10px 25px rgba(0,0,0,.25);
       opacity: 0;
       transition: all .35s ease;
       z-index: 999;
       max-width: calc(100vw - 24px);
       width: min(560px, calc(100vw - 24px));
       text-align: center;
-      border: 1px solid rgba(255,255,255,0.16);
+      border: 1px solid rgba(255,255,255,.16);
       backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
     }
-
-    .toast-popup.success {
-      background: linear-gradient(90deg,#c66bff,#f0a8ff);
-    }
-
-    .toast-popup.error {
-      background: linear-gradient(90deg,#8a2be2,#5b0ea8);
-    }
-
-    .toast-popup.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-
-    select:disabled,
-    input:disabled {
-      opacity: 0.8;
-      cursor: not-allowed;
-    }
-
+    .toast-popup.success { background: linear-gradient(90deg,#c66bff,#f0a8ff); }
+    .toast-popup.error { background: linear-gradient(90deg,#8a2be2,#5b0ea8); }
+    .toast-popup.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    select:disabled, input:disabled { opacity: .8; cursor: not-allowed; }
     @media (max-width: 840px) {
       .form-grid { grid-template-columns: 1fr 1fr; }
       .field-full { grid-column: 1 / -1; }
     }
-
     @media (max-width: 640px) {
       .page { padding: 10px 10px 18px; }
       .card { padding: 18px 14px 18px; }
-      .stats { grid-template-columns: 1fr; }
-      .form-grid { grid-template-columns: 1fr; }
+      .stats, .form-grid, .insight-grid, .admin-nav { grid-template-columns: 1fr; }
       .actions { flex-direction: column; }
-      .primary-btn, .secondary-btn { width: 100%; }
+      .primary-btn, .secondary-btn, .delete-btn { width: 100%; }
       .admin-item { grid-template-columns: 44px 1fr; }
-      .delete-btn { grid-column: 1 / -1; width: 100%; }
-      .admin-top { flex-direction: column; align-items: stretch; }
-      .admin-actions { justify-content: space-between; }
-      .admin-nav { grid-template-columns: 1fr; }
-      .chart-row { grid-template-columns: 36px 1fr 34px; }
-      .insight-grid { grid-template-columns: 1fr; }
       h1 { font-size: 28px; }
       .sub { font-size: 14px; }
     }
@@ -1478,14 +1097,8 @@
         <div class="eyebrow">ARMY BRASIL • ABAIXO-ASSINADO</div>
         <h1>Novas Datas — BTS WORLD TOUR 'ARIRANG' 💜</h1>
         <p class="sub">Assine a campanha e ajude a mostrar a força do Brasil na turnê ARIRANG para abrir novas datas.</p><div class="stats">
-      <div class="stat-box">
-        <span>Assinaturas</span>
-        <strong id="contador">0</strong>
-      </div>
-      <div class="stat-box">
-        <span>Meta inicial</span>
-        <strong>1.000.000</strong>
-      </div>
+      <div class="stat-box"><span>Assinaturas</span><strong id="contador">0</strong></div>
+      <div class="stat-box"><span>Meta inicial</span><strong>1.000.000</strong></div>
     </div>
 
     <div class="barra"><div id="progresso" class="progresso"></div></div>
@@ -1498,12 +1111,10 @@
           <label for="nome">Nome completo</label>
           <input id="nome" type="text" placeholder="Nome e sobrenome" autocomplete="name" />
         </div>
-
         <div class="field">
           <label for="estado">Estado</label>
           <select id="estado"></select>
         </div>
-
         <div class="field field-full">
           <label for="cidade">Cidade</label>
           <div class="cidade-search-wrap">
@@ -1551,9 +1162,8 @@
   </div>
 </div>
 
-  </div>  <div class="admin-trigger" id="adminTrigger">
-    <button id="openAdminBtn">Admin</button>
-  </div>  <div class="admin-backdrop" id="adminBackdrop"></div>  <aside class="admin-menu-panel" id="adminMenuPanel">
+  </div>  <div class="admin-trigger" id="adminTrigger"><button id="openAdminBtn">Admin</button></div>
+  <div class="admin-backdrop" id="adminBackdrop"></div>  <aside class="admin-menu-panel" id="adminMenuPanel">
     <div class="admin-menu-top">
       <h4>Menu do admin</h4>
       <button class="modal-close" id="adminMenuCloseBtn">Fechar</button>
@@ -1573,96 +1183,30 @@
   <div class="insight-box">
     <h5>Resumo rápido</h5>
     <div class="insight-grid">
-      <div class="insight-pill">
-        <span>Estado líder</span>
-        <strong id="topEstado">—</strong>
-      </div>
-      <div class="insight-pill">
-        <span>Estados no ranking</span>
-        <strong id="totalEstados">0</strong>
-      </div>
-      <div class="insight-pill" style="grid-column: 1 / -1;">
-        <span>Total de assinaturas</span>
-        <strong id="totalAssinaturasAdmin">0</strong>
-      </div>
+      <div class="insight-pill"><span>Estado líder</span><strong id="topEstado">—</strong></div>
+      <div class="insight-pill"><span>Estados no ranking</span><strong id="totalEstados">0</strong></div>
+      <div class="insight-pill" style="grid-column: 1 / -1;"><span>Total de assinaturas</span><strong id="totalAssinaturasAdmin">0</strong></div>
     </div>
   </div>
-  <div class="ranking-box">
-    <h5>Top estados</h5>
-    <div id="rankingLista"></div>
-  </div>
-  <div class="chart-box">
-    <h5>Gráfico de barras</h5>
-    <div id="rankingGrafico"></div>
-  </div>
+  <div class="ranking-box"><h5>Top estados</h5><div id="rankingLista"></div></div>
+  <div class="chart-box"><h5>Gráfico de barras</h5><div id="rankingGrafico"></div></div>
 </div>
 
   </aside>  <div class="modal-overlay" id="adminLoginModal" onclick="if(event.target === this) fecharModal('adminLoginModal')">
     <div class="modal-box" style="max-width:480px;">
-      <div class="modal-top">
-        <h3>Login do admin</h3>
-        <button class="modal-close" onclick="fecharModal('adminLoginModal')">Fechar</button>
-      </div>
-      <div class="field" style="margin-bottom:12px;">
-        <label for="adminEmail">E-mail</label>
-        <input id="adminEmail" type="email" placeholder="admin@exemplo.com" autocomplete="username" />
-      </div>
-      <div class="field">
-        <label for="adminSenha">Senha</label>
-        <input id="adminSenha" type="password" placeholder="Sua senha" autocomplete="current-password" />
-      </div>
-      <div class="actions" style="margin-top:14px;">
-        <button class="primary-btn" id="adminLoginBtn">Entrar no admin</button>
-      </div>
+      <div class="modal-top"><h3>Login do admin</h3><button class="modal-close" onclick="fecharModal('adminLoginModal')">Fechar</button></div>
+      <div class="field" style="margin-bottom:12px;"><label for="adminEmail">E-mail</label><input id="adminEmail" type="email" placeholder="admin@exemplo.com" autocomplete="username" /></div>
+      <div class="field"><label for="adminSenha">Senha</label><input id="adminSenha" type="password" placeholder="Sua senha" autocomplete="current-password" /></div>
+      <div class="actions" style="margin-top:14px;"><button class="primary-btn" id="adminLoginBtn">Entrar no admin</button></div>
     </div>
   </div>  <div class="modal-overlay" id="sobreModal" onclick="if(event.target === this) fecharModal('sobreModal')">
-    <div class="modal-box">
-      <div class="modal-top">
-        <h3>Sobre</h3>
-        <button class="modal-close" onclick="fecharModal('sobreModal')">Fechar</button>
-      </div>
-      <p>Este abaixo-assinado foi criado por fãs para demonstrar, de forma organizada, o interesse do público brasileiro por novas datas da BTS WORLD TOUR 'ARIRANG' no Brasil.</p>
-      <p>A proposta do site é reunir apoio público, fortalecer a campanha e facilitar a divulgação em rede, especialmente entre fãs que desejam demonstrar demanda por novas datas de forma visível e organizada.</p>
-    </div>
+    <div class="modal-box"><div class="modal-top"><h3>Sobre</h3><button class="modal-close" onclick="fecharModal('sobreModal')">Fechar</button></div><p>Este abaixo-assinado foi criado por fãs para demonstrar, de forma organizada, o interesse do público brasileiro por novas datas da BTS WORLD TOUR 'ARIRANG' no Brasil.</p><p>A proposta do site é reunir apoio público, fortalecer a campanha e facilitar a divulgação em rede, especialmente entre fãs que desejam demonstrar demanda por novas datas de forma visível e organizada.</p></div>
   </div>  <div class="modal-overlay" id="privacidadeModal" onclick="if(event.target === this) fecharModal('privacidadeModal')">
-    <div class="modal-box">
-      <div class="modal-top">
-        <h3>Política de Privacidade</h3>
-        <button class="modal-close" onclick="fecharModal('privacidadeModal')">Fechar</button>
-      </div>
-      <p>Neste projeto, os dados informados no formulário se limitam a nome completo, estado e cidade, usados para registro da assinatura, contagem da mobilização e administração técnica do abaixo-assinado.</p>
-      <ul>
-        <li>Os dados podem ser armazenados em base digital para registrar a assinatura e organizar a campanha.</li>
-        <li>O site utiliza recursos do navegador para reduzir assinaturas repetidas no mesmo dispositivo ou navegador.</li>
-        <li>Serviços técnicos de terceiros podem tratar dados estritamente para funcionamento do site.</li>
-        <li>O projeto não tem como finalidade vender cadastro de apoiadores.</li>
-      </ul>
-      <p>Ao assinar, você declara ciência dessas condições e concorda com o tratamento dos dados dentro da finalidade da campanha.</p>
-    </div>
+    <div class="modal-box"><div class="modal-top"><h3>Política de Privacidade</h3><button class="modal-close" onclick="fecharModal('privacidadeModal')">Fechar</button></div><p>Neste projeto, os dados informados no formulário se limitam a nome completo, estado e cidade, usados para registro da assinatura, contagem da mobilização e administração técnica do abaixo-assinado.</p><ul><li>Os dados podem ser armazenados em base digital para registrar a assinatura e organizar a campanha.</li><li>O site utiliza recursos do navegador para reduzir assinaturas repetidas no mesmo dispositivo ou navegador.</li><li>Serviços técnicos de terceiros podem tratar dados estritamente para funcionamento do site.</li><li>O projeto não tem como finalidade vender cadastro de apoiadores.</li></ul><p>Ao assinar, você declara ciência dessas condições e concorda com o tratamento dos dados dentro da finalidade da campanha.</p></div>
   </div>  <div class="modal-overlay" id="termosModal" onclick="if(event.target === this) fecharModal('termosModal')">
-    <div class="modal-box">
-      <div class="modal-top">
-        <h3>Termos de Uso</h3>
-        <button class="modal-close" onclick="fecharModal('termosModal')">Fechar</button>
-      </div>
-      <p>Ao utilizar este site, você concorda em participar da mobilização de forma legítima, responsável e compatível com a proposta do abaixo-assinado.</p>
-      <ul>
-        <li>Somente assinaturas com nome completo são aceitas.</li>
-        <li>O uso de automações, robôs, fraude ou qualquer tentativa de inflar artificialmente o número de assinaturas é proibido.</li>
-        <li>Assinaturas duplicadas, ofensivas, falsas ou incompatíveis com a proposta da campanha podem ser removidas pela administração.</li>
-        <li>O funcionamento técnico, o visual e as regras do projeto podem ser atualizados para melhoria de experiência, segurança e organização.</li>
-      </ul>
-    </div>
+    <div class="modal-box"><div class="modal-top"><h3>Termos de Uso</h3><button class="modal-close" onclick="fecharModal('termosModal')">Fechar</button></div><p>Ao utilizar este site, você concorda em participar da mobilização de forma legítima, responsável e compatível com a proposta do abaixo-assinado.</p><ul><li>Somente assinaturas com nome completo são aceitas.</li><li>O uso de automações, robôs, fraude ou qualquer tentativa de inflar artificialmente o número de assinaturas é proibido.</li><li>Assinaturas duplicadas, ofensivas, falsas ou incompatíveis com a proposta da campanha podem ser removidas pela administração.</li><li>O funcionamento técnico, o visual e as regras do projeto podem ser atualizados para melhoria de experiência, segurança e organização.</li></ul></div>
   </div>  <div class="modal-overlay" id="transparenciaModal" onclick="if(event.target === this) fecharModal('transparenciaModal')">
-    <div class="modal-box">
-      <div class="modal-top">
-        <h3>Transparência</h3>
-        <button class="modal-close" onclick="fecharModal('transparenciaModal')">Fechar</button>
-      </div>
-      <p>Este projeto poderá utilizar monetização compatível com a página, como anúncios e outras formas de apoio digital, para sustentar sua continuidade e ampliar seu alcance.</p>
-      <p>A proposta atual é destinar aproximadamente 50% dos valores arrecadados a organizações que atuem na proteção de animais em situação de vulnerabilidade. Os outros 50% poderão ser destinados à manutenção, melhoria e evolução do site, bem como ao fortalecimento dos demais canais vinculados ao projeto.</p>
-      <p>A prestação de contas relacionada à monetização e aos repasses será publicada no grupo oficial do Telegram da campanha, como forma de dar mais visibilidade e transparência para a comunidade.</p>
-    </div>
+    <div class="modal-box"><div class="modal-top"><h3>Transparência</h3><button class="modal-close" onclick="fecharModal('transparenciaModal')">Fechar</button></div><p>Este projeto poderá utilizar monetização compatível com a página, como anúncios e outras formas de apoio digital, para sustentar sua continuidade e ampliar seu alcance.</p><p>A proposta atual é destinar aproximadamente 50% dos valores arrecadados a organizações que atuem na proteção de animais em situação de vulnerabilidade. Os outros 50% poderão ser destinados à manutenção, melhoria e evolução do site, bem como ao fortalecimento dos demais canais vinculados ao projeto.</p><p>A prestação de contas relacionada à monetização e aos repasses será publicada no grupo oficial do Telegram da campanha, como forma de dar mais visibilidade e transparência para a comunidade.</p></div>
   </div>
 </body>
 </html>
